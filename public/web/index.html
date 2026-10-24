@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crowdsight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@1&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!--APP-START-->
+<div class="page">
+<div class="wrap">
+  <header class="lnav">
+    <a class="wordmark" href="#top" aria-label="Crowdsight home"><svg width="24" height="24" viewBox="0 0 22 22" aria-hidden="true"><g fill="#0B0B10"><circle cx="4" cy="4" r="2.1"/><circle cx="11" cy="4" r="2.1"/><circle cx="18" cy="4" r="2.1"/><circle cx="4" cy="11" r="2.1"/><circle cx="18" cy="11" r="2.1"/><circle cx="4" cy="18" r="2.1"/><circle cx="11" cy="18" r="2.1"/><circle cx="18" cy="18" r="2.1"/></g><circle cx="11" cy="11" r="3.1" fill="#4F46E5"/></svg>crowdsight</a>
+    <nav class="links" aria-label="Sections"><a href="#how">How it works</a><a href="#app">Workspace</a><a href="#app">Pricing tests</a></nav>
+    <a class="btn dark" href="#app" id="navCta">Test your launch</a>
+  </header>
+  <section class="hero" id="top">
+    <canvas id="field" aria-hidden="true"></canvas>
+    <span class="kicker"><b>New</b>1,000 AI personas, grounded in the live market</span>
+    <h1 class="motto">Founders build great products. <em>They fail at everything after.</em></h1>
+    <p class="lede">Crowdsight shows your ad, your price and your launch to 1,000 simulated people before you spend a pound. Then an agent fixes what they hated.</p>
+    <div class="ctas"><a class="btn dark lg" href="#app" id="heroCta">Test your launch</a><a class="btn lg" href="#how">How it works</a></div>
+    <div class="trust"><span><i class="dot" style="background:var(--pos)"></i>Nebius Token Factory · 6 model families</span><span><i class="dot" style="background:#0EA5A0"></i>Tavily live web search</span><span><i class="dot" style="background:var(--brand)"></i>Closed-loop optimiser</span></div>
+  </section>
+  <section class="how" id="how" aria-label="How it works">
+    <div class="hcard"><span class="n">01</span><h3>Read the market</h3><p>Tavily pulls real competitors, their prices and what customers complain about.</p></div>
+    <div class="hcard"><span class="n">02</span><h3>Ask 1,000 people</h3><p>Each persona has a role, a personality and a stake. They run on six model families, so they disagree like a real market.</p></div>
+    <div class="hcard"><span class="n">03</span><h3>See who clicks and buys</h3><p>Opinion, click-through, purchases and the price each person would pay, split by segment.</p></div>
+    <div class="hcard"><span class="n">04</span><h3>Let the agent fix it</h3><p>It changes one thing at a time, re-tests on the crowd and keeps only what wins.</p></div>
+  </section>
+  <section class="appsec" id="app" aria-label="Workspace">
+    <div class="apphead"><h2>Run your first test.</h2><p>Pick a test type, type or speak your pitch, and watch the crowd react. Example data.</p></div>
+    <div class="appcard">
+<div class="shell">
+  <aside class="side" id="side" aria-label="Sidebar">
+    <div class="logo wordmark" style="font-size:18px"><svg width="20" height="20" viewBox="0 0 22 22" aria-hidden="true"><g fill="#0B0B10"><circle cx="4" cy="4" r="2.1"/><circle cx="11" cy="4" r="2.1"/><circle cx="18" cy="4" r="2.1"/><circle cx="4" cy="11" r="2.1"/><circle cx="18" cy="11" r="2.1"/><circle cx="4" cy="18" r="2.1"/><circle cx="11" cy="18" r="2.1"/><circle cx="18" cy="18" r="2.1"/></g><circle cx="11" cy="11" r="3.1" fill="#4F46E5"/></svg>crowdsight</div>
+    <button class="newbtn" id="newBtn" type="button"><span class="plus">+</span>New test</button>
+    <div>
+      <div class="navlbl">Test type</div>
+      <nav class="nav" id="nav">
+        <button type="button" data-cat="general" aria-current="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>General</button>
+        <button type="button" data-cat="ads" aria-current="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z"/><path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/></svg>Ads</button>
+        <button type="button" data-cat="pricing" aria-current="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12 12 20l-8-8V4h8l8 8Z"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>Pricing</button>
+        <button type="button" data-cat="launch" aria-current="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M14 4c3-1 6-1 6-1s0 3-1 6l-7 7-5-5 7-7Z"/><circle cx="15" cy="9" r="1.5"/></svg>Product launch</button>
+      </nav>
+    </div>
+    <div style="min-height:0;display:flex;flex-direction:column">
+      <div class="navlbl">Recent</div>
+      <div class="recent" id="recent"><span class="dim" style="font-size:12.5px;padding:0 10px">Your tests will appear here.</span></div>
+    </div>
+    <div class="foot">
+      <button class="btn" id="beBtn" type="button" style="justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/></svg>See all 1,000 personas</button>
+      <div class="status"><span><i class="dot" style="background:var(--pos)"></i>Nebius · 6 model families</span><span><i class="dot" style="background:#0EA5A0"></i>Tavily · live web search</span></div>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="topbar">
+      <button class="icon-btn menu" id="menuBtn" type="button" aria-label="Open sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <span class="title" id="title"></span>
+      <div class="r"><button class="btn" id="detailsBtn" type="button" hidden>Details</button></div>
+    </div>
+
+    <section class="home" id="home">
+      <div class="hello"><span id="hello">What are you launching?</span></div>
+      <p class="sub" id="homeSub">Test it on 1,000 people before you tell one.</p>
+      <div id="composerSlot"></div>
+      <div class="ideas" id="ideas"></div>
+    </section>
+
+    <section class="thread" id="thread" hidden><div class="tin" id="tin"></div></section>
+    <div class="dock" id="dock" hidden><div style="width:min(720px,100%)"><div id="dockSlot"></div><div class="foot-note">Simulated market response. An early signal, not a prediction.</div></div></div>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <textarea id="inp" rows="2" aria-label="What are you testing"></textarea>
+      <div class="crow">
+        <label class="pill" for="mkt">Market <input class="mkt" id="mkt" value="pay-per-visit gyms, London"></label>
+        <label class="pill" for="pr" id="prPill">£ <input class="pr num" id="pr" value="14"> /mo</label>
+        <div class="r">
+          <button type="button" class="icon-btn" id="micBtn" aria-label="Speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></button>
+          <button type="submit" class="send" aria-label="Run on the crowd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+        </div>
+      </div>
+    </form>
+
+    <section class="voice" id="voice" aria-label="Voice mode">
+      <div class="orbwrap"><canvas id="orb" aria-hidden="true"></canvas></div>
+      <div class="vstate"><i class="dot" id="vdot" style="background:var(--pos)"></i><span id="vstate">Listening</span></div>
+      <div class="vtext" id="vtext"><span class="interim">Pitch your launch out loud.</span></div>
+      <div class="vctl">
+        <button class="round" id="muteBtn" type="button" aria-label="Mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button class="round end" id="endBtn" type="button" aria-label="Done speaking"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
+      </div>
+      <div class="vnote" id="vnote">Your words go straight into the test.</div>
+    </section>
+
+    <aside class="drawer" id="drawer" aria-label="Details">
+      <div class="dh"><div class="tabs" role="tablist" id="dtabs">
+        <button role="tab" data-t="models" aria-selected="true">Models</button>
+        <button role="tab" data-t="segments" aria-selected="false">Segments</button>
+        <button role="tab" data-t="marketing" aria-selected="false">Marketing</button>
+        <button role="tab" data-t="pricing" aria-selected="false">Pricing</button>
+      </div><button class="icon-btn" id="dclose" type="button" aria-label="Close details" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="pane" id="dpane"></div>
+    </aside>
+  </main>
+</div>
+    </div>
+  </section>
+  <footer class="lfoot"><span>crowdsight · simulated market response, an early signal, not a prediction.</span><span>Built at the Noetic × Nebius One Day Hackathon · Imperial College London · 24 Oct 2026</span></footer>
+</div>
+</div>
+
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="All personas">
+  <div class="sh"><h2>Backend</h2><span class="muted" style="font-size:13px">Every call and all 1,000 personas</span><span class="num dim" id="meterTxt" style="margin-left:auto;font-size:12.5px"></span><button class="btn" id="sheetClose" type="button">Close</button></div>
+  <div class="pipe" id="pipe"></div>
+  <div class="sbody">
+    <div class="tblwrap">
+      <div class="filters">
+        <input id="fq" placeholder="Search name, role or quote" aria-label="Search personas">
+        <select id="fseg" aria-label="Segment"><option value="">All segments</option></select>
+        <select id="fmod" aria-label="Model"><option value="">All models</option></select>
+        <select id="fout" aria-label="Outcome"><option value="">Any outcome</option><option value="bought">Bought</option><option value="clicked">Clicked, didn't buy</option><option value="none">Didn't click</option></select>
+        <span class="num dim" id="fcount" style="margin-left:auto;font-size:12.5px"></span>
+      </div>
+      <div class="rows"><table class="pt"><thead><tr><th>Persona</th><th>Segment</th><th>Model</th><th>Stance</th><th>Click</th><th>Buy</th><th>Max £</th><th>Quote</th></tr></thead><tbody id="tbody"></tbody></table></div>
+    </div>
+    <div class="inspect" id="inspect"></div>
+  </div>
+</section>
+<!--APP-END-->
+<script src="app.js"></script>
+</body>
+</html>
