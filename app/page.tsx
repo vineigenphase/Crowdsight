@@ -7,7 +7,8 @@ import { Dock, LoopTimeline, Pending, PersonaCard, Stage, Status, TopBar, Versio
 import { useVoice, VoiceVisual } from '@/components/VoiceVisual';
 import { streamSSE } from '@/lib/client';
 import { defaultConfigs, InputType, parsePrice, samplePersonas, SegmentConfig, splitSentences } from '@/lib/personas';
-import { diversity, Reaction, summarise } from '@/lib/score';
+import { diversity, financials, Reaction, summarise } from '@/lib/score';
+import { Transcript } from '@/components/Transcript';
 
 const N = 1000;
 const SEED = 7;
@@ -44,6 +45,10 @@ export default function Home() {
   const [meter, setMeter] = useState({ calls: 0, tokens: 0 });
   const [prevPrice, setPrevPrice] = useState<number | null>(null);
   const [micOn, setMicOn] = useState(false);
+  const [mode, setMode] = useState<'speak' | 'type'>('type');
+  const [stamps, setStamps] = useState<number[]>([]);
+  const [elapsed, setElapsed] = useState(0);
+  const micStart = useRef(0);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [videoBusy, setVideoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,13 +227,17 @@ export default function Home() {
   };
 
   const voice = useVoice(
-    (final) => setText((t) => { const n = (t.trim() ? t.trim() + ' ' : '') + final.charAt(0).toUpperCase() + final.slice(1) + (/[.!?]$/.test(final) ? '' : '.'); const p = parsePrice(n); if (p != null) setPrice(p); return n; }),
+    (final) => setText((t) => {
+      setStamps((st) => [...st, (performance.now() - micStart.current) / 1000]); const n = (t.trim() ? t.trim() + ' ' : '') + final.charAt(0).toUpperCase() + final.slice(1) + (/[.!?]$/.test(final) ? '' : '.'); const p = parsePrice(n); if (p != null) setPrice(p); return n; }),
     setInterim,
   );
   const toggleMic = async () => {
     if (micOn) { voice.stop(); setAnalyser(null); setMicOn(false); return; }
     try {
-      if (!text.trim() || text === EXAMPLES[type]) setText('');
+      if (!text.trim() || text === EXAMPLES[type]) { setText(''); setStamps([]); }
+      setMode('speak');
+      micStart.current = performance.now();
+      setElapsed(0);
       setAnalyser(await voice.start());
       setMicOn(true);
     } catch { setError('Microphone permission denied'); }
@@ -259,6 +268,12 @@ export default function Home() {
     setVersions([]); setPending(null); setStage('Input'); setMono(false); setNote(null); setSelected(null); bump();
   };
 
+  useEffect(() => {
+    if (!micOn) return;
+    const t = setInterval(() => setElapsed((performance.now() - micStart.current) / 1000), 250);
+    return () => clearInterval(t);
+  }, [micOn]);
+
   const display = mono ? monoRef.current : mixedRef.current;
   const sel = selected ? personas.find((p) => p.id === selected) : null;
   const hasRun = summary.n > 0;
@@ -269,28 +284,34 @@ export default function Home() {
       <main className="flex min-h-0 flex-1">
         {/* LEFT: input workspace */}
         <section className="flex w-[58%] min-w-0 flex-col border-r border-[var(--line)]">
-          <div className="flex items-center gap-1 px-4 pt-3">
+          <div className="flex h-11 items-center gap-1 border-b border-[var(--line)] px-4">
             {(['ad', 'price', 'spec'] as InputType[]).map((t) => (
-              <button key={t} onClick={() => setType(t)} className={`rounded-md px-3 py-1.5 text-[13px] transition-colors duration-200 ${type === t ? 'bg-[var(--panel2)] text-[var(--text)]' : 'text-[var(--dim)] hover:text-[var(--text)]'}`}>
+              <button key={t} onClick={() => setType(t)} className={`rounded-md px-3 py-1 text-[13px] transition-colors duration-200 ${type === t ? 'bg-[var(--panel2)] text-[var(--text)]' : 'text-[var(--dim)] hover:text-[var(--text)]'}`}>
                 {t === 'ad' ? 'Ad' : t === 'price' ? 'Price' : 'Spec'}
               </button>
             ))}
-            <div className="ml-auto flex items-center gap-2 text-[12px] text-[var(--dim)]">
-              Founder&apos;s price £
-              <input type="number" value={price ?? ''} onChange={(e) => setPrice(e.target.value === '' ? null : +e.target.value)} className="field num w-16 py-1" />/mo
+            <div className="ml-auto flex items-center gap-4 text-[12px] text-[var(--dim)]">
+              <span className="flex items-center gap-1.5">
+                Price £
+                <input type="number" value={price ?? ''} onChange={(e) => setPrice(e.target.value === '' ? null : +e.target.value)} className="field num w-14 py-0.5" />/mo
+              </span>
+              <span className="flex rounded-md border border-[var(--line)] p-0.5">
+                {(['speak', 'type'] as const).map((m) => (
+                  <button key={m} onClick={() => setMode(m)} className={`rounded px-2.5 py-0.5 transition-colors duration-200 ${mode === m ? 'bg-[var(--panel2)] text-[var(--text)]' : 'hover:text-[var(--text)]'}`}>{m === 'speak' ? 'Speak' : 'Type'}</button>
+                ))}
+              </span>
             </div>
           </div>
-          <div className="mt-3"><VoiceVisual analyser={analyser} status={micOn ? 'listening' : 'idle'} /></div>
-          <div className="relative min-h-0 flex-1 p-4">
-            <textarea
-              value={text + (interim ? (text ? ' ' : '') + interim : '')}
-              onChange={(e) => onTextChange(e.target.value)}
+          <VoiceVisual analyser={analyser} status={micOn ? 'listening' : 'idle'} elapsed={elapsed} />
+          <div className="min-h-0 flex-1 border-t border-[var(--line)]">
+            <Transcript
+              mode={mode}
+              text={text}
+              interim={interim}
+              stamps={stamps}
+              onChange={onTextChange}
               placeholder={type === 'ad' ? 'Paste your ad, launch post or landing copy…' : type === 'price' ? '£9/mo → £14/mo, plus what changes' : 'What changes in the product'}
-              className="h-full w-full resize-none bg-transparent text-[17px] leading-relaxed outline-none placeholder:text-[#4a4a4f]"
             />
-            <div className="absolute bottom-3 right-4 flex gap-1">
-              {sentences.slice(0, 14).map((_, i) => <span key={i} className="num rounded border border-[var(--line)] px-1.5 text-[10px] text-[var(--dim)]">S{i + 1}</span>)}
-            </div>
           </div>
           <LoopTimeline versions={versions} pending={pending} viewing={viewing} onView={viewVersion} note={note} />
           {error && <div className="border-t border-[var(--line)] px-4 py-2 text-[12px] text-[var(--neg)]">{error}</div>}
@@ -298,6 +319,12 @@ export default function Home() {
 
         {/* RIGHT: crowd intelligence */}
         <section className="flex w-[42%] min-w-0 flex-col bg-[var(--panel)]">
+          <div className="grid grid-cols-4 border-b border-[var(--line)]">
+            <Kpi k="Launch Score" v={hasRun ? summary.launch.toFixed(1) : '—'} sub={versions.length > 1 ? `${(versions[versions.length - 1].score - versions[0].score >= 0 ? '+' : '')}${(versions[versions.length - 1].score - versions[0].score).toFixed(1)} vs v0` : 'simulated'} />
+            <Kpi k="Reacted" v={display.size ? display.size.toLocaleString() : '—'} sub={running ? 'streaming' : 'of 1,000'} />
+            <Kpi k="Diversity" v={display.size ? diversity([...display.values()]).toFixed(0) : '—'} sub={mono ? 'mono model' : monoDiv != null ? `mono ${monoDiv.toFixed(0)}` : '6 models'} />
+            <Kpi k={price != null ? `Would pay £${price}` : 'Would pay'} v={hasRun ? financials([...mixedRef.current.values()], price).payPct.toFixed(0) + '%' : '—'} sub="early signal" last />
+          </div>
           <div className="flex gap-4 border-b border-[var(--line)] px-4">
             {TABS.map((t) => (
               <button key={t} onClick={() => setTab(t)} className={`-mb-px border-b py-2.5 text-[13px] transition-colors duration-200 ${tab === t ? 'border-[var(--text)] text-[var(--text)]' : 'border-transparent text-[var(--dim)] hover:text-[var(--text)]'}`}>{t}</button>
@@ -306,10 +333,6 @@ export default function Home() {
           <div className="relative min-h-0 flex-1 overflow-auto">
             <div className={tab === 'Crowd' ? 'absolute inset-0' : 'hidden'}>
               <CrowdNetwork ref={net} personas={personas} sentences={sentences} families={status?.families ?? []} mono={mono} reactions={display} version={ver} selected={selected} onSelect={setSelected} />
-              <div className="pointer-events-none absolute right-3 top-2 text-right text-[11px] text-[var(--dim)]">
-                <div><span className="num">{display.size}</span> / 1,000 reacted</div>
-                {display.size > 0 && <div>diversity <span className="num text-[var(--text)]">{diversity([...display.values()]).toFixed(0)}</span>{mono ? ' (mono)' : ''}</div>}
-              </div>
               {sel && <PersonaCard p={sel} r={display.get(sel.id)} model={display.get(sel.id)?.model} onClose={() => setSelected(null)} />}
             </div>
             {tab === 'Segments' && <SegmentTabs configs={configs} onChange={changeConfigs} scores={summary.segments} />}
@@ -349,4 +372,14 @@ async function sampleFrames(file: File, k: number): Promise<string[]> {
   }
   URL.revokeObjectURL(url);
   return out;
+}
+
+function Kpi({ k, v, sub, last }: { k: string; v: string; sub: string; last?: boolean }) {
+  return (
+    <div className={`px-4 py-3 ${last ? '' : 'border-r border-[var(--line)]'}`}>
+      <div className="truncate text-[11px] text-[var(--dim)]">{k}</div>
+      <div className="num mt-1 text-[22px] leading-none tracking-tight">{v}</div>
+      <div className="mt-1.5 truncate text-[10px] text-[#55555a]">{sub}</div>
+    </div>
+  );
 }

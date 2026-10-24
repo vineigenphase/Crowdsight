@@ -1,8 +1,12 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-/** Real mic input: 1px waveform, thin RMS ring, 24 signal points from frequency bins. Flat when idle. */
-export function VoiceVisual({ analyser, status }: { analyser: AnalyserNode | null; status: 'idle' | 'listening' | 'muted' }) {
+/**
+ * Centrepiece audio visual on real mic input: a fine 1px waveform that passes behind a thin
+ * RMS ring, 24 signal points driven by frequency bins, and a dot-grid halo whose points lift
+ * with amplitude. Flat line, still ring and resting dots when idle. No glow.
+ */
+export function VoiceVisual({ analyser, status, elapsed }: { analyser: AnalyserNode | null; status: 'idle' | 'listening' | 'muted'; elapsed: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const live = useRef(analyser);
   live.current = analyser;
@@ -11,13 +15,14 @@ export function VoiceVisual({ analyser, status }: { analyser: AnalyserNode | nul
     const cv = ref.current!;
     const ctx = cv.getContext('2d')!;
     let raf = 0;
-    let rmsSmooth = 0;
+    let rmsS = 0;
     const time = new Uint8Array(2048);
     const freq = new Uint8Array(1024);
-    const frame = () => {
+    const binsS = new Float32Array(24);
+    const frame = (now: number) => {
       const r = cv.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      if (cv.width !== Math.round(r.width * dpr)) { cv.width = r.width * dpr; cv.height = r.height * dpr; }
+      if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) { cv.width = r.width * dpr; cv.height = r.height * dpr; }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const w = r.width, h = r.height;
       ctx.clearRect(0, 0, w, h);
@@ -29,39 +34,67 @@ export function VoiceVisual({ analyser, status }: { analyser: AnalyserNode | nul
         for (let i = 0; i < a.fftSize; i++) { const v = (time[i] - 128) / 128; rms += v * v; }
         rms = Math.sqrt(rms / a.fftSize);
       }
-      rmsSmooth += (rms - rmsSmooth) * 0.25;
-      const cx = w * 0.18, cy = h / 2;
+      rmsS += (rms - rmsS) * 0.2;
+      const amp = Math.min(1, rmsS * 5);
+      for (let i = 0; i < 24; i++) {
+        const b = a ? freq[Math.floor(2 + (i / 24) * 140)] / 255 : 0;
+        binsS[i] += (b - binsS[i]) * 0.3;
+      }
 
-      // Waveform across the width (right of the ring)
-      ctx.strokeStyle = 'rgba(237,237,237,.55)';
+      const cx = w / 2, cy = h / 2;
+      const base = Math.min(h * 0.2, 44);
+      const ringR = base * (1 + amp * 0.35);
+      const haloR = base * 2.3;
+
+      // Dot-grid halo: a square lattice clipped to a circle; dots near the ring lift with amplitude.
+      const step = 9;
+      for (let y = -haloR; y <= haloR; y += step) {
+        for (let x = -haloR; x <= haloR; x += step) {
+          const d = Math.hypot(x, y);
+          if (d > haloR || d < ringR + 8) continue;
+          const ang = Math.atan2(y, x);
+          const bi = Math.floor(((ang + Math.PI) / (Math.PI * 2)) * 24) % 24;
+          const falloff = 1 - (d - ringR) / (haloR - ringR);
+          const lift = binsS[bi] * falloff;
+          ctx.fillStyle = `rgba(237,237,237,${0.07 + lift * 0.55})`;
+          ctx.fillRect(cx + x - 0.75, cy + y - 0.75, 1.5, 1.5);
+        }
+      }
+
+      // Fine waveform across the full width, broken where it passes the halo.
       ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(237,237,237,.6)';
+      const N = 320;
+      let pen = false;
       ctx.beginPath();
-      const x0 = w * 0.32, x1 = w - 8;
-      const N = 256;
       for (let i = 0; i <= N; i++) {
-        const x = x0 + (i / N) * (x1 - x0);
+        const x = 16 + (i / N) * (w - 32);
+        if (Math.abs(x - cx) < haloR + 10) { pen = false; continue; }
         const v = a ? (time[Math.floor((i / N) * (a.fftSize - 1))] - 128) / 128 : 0;
-        const y = cy + v * h * 0.42;
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        const edge = Math.min(1, (x - 16) / 60, (w - 16 - x) / 60); // taper at the ends
+        const y = cy + v * h * 0.38 * edge;
+        if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
       }
       ctx.stroke();
 
-      // Ring: radius follows RMS
-      const base = Math.min(h * 0.26, 34);
-      const rad = base * (1 + Math.min(1, rmsSmooth * 4) * 0.45);
-      ctx.strokeStyle = 'rgba(237,237,237,.5)';
-      ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
-      // Subtle geometry: inner square rotates/scales with amplitude
-      const g = base * 0.55 * (1 + rmsSmooth * 2);
-      ctx.strokeStyle = 'rgba(237,237,237,.12)';
-      ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4 + rmsSmooth * 2); ctx.strokeRect(-g / 2, -g / 2, g, g); ctx.restore();
-      // 24 signal points offset by frequency bins
+      // Ring
+      ctx.strokeStyle = 'rgba(237,237,237,.7)';
+      ctx.beginPath(); ctx.arc(cx, cy, ringR, 0, Math.PI * 2); ctx.stroke();
+      // Amplitude-reactive geometry: two counter-rotating squares inside the ring.
+      const g = ringR * 0.62;
+      const rot = now / 6000;
+      ctx.strokeStyle = `rgba(237,237,237,${0.1 + amp * 0.25})`;
+      for (const [k, dir] of [[1, 1], [0.7, -1]] as const) {
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4 + dir * (rot + amp * 0.6));
+        const s = g * k * (1 + amp * 0.2);
+        ctx.strokeRect(-s / 2, -s / 2, s, s); ctx.restore();
+      }
+      // 24 signal points, offset outward by their frequency bin.
       for (let i = 0; i < 24; i++) {
         const ang = (i / 24) * Math.PI * 2 - Math.PI / 2;
-        const bin = a ? freq[Math.floor(2 + (i / 24) * 120)] / 255 : 0;
-        const d = rad + 5 + bin * 16;
-        ctx.fillStyle = `rgba(237,237,237,${0.3 + bin * 0.7})`;
-        ctx.fillRect(cx + Math.cos(ang) * d - 1, cy + Math.sin(ang) * d - 1, 2, 2);
+        const d = ringR + 6 + binsS[i] * 18;
+        ctx.fillStyle = `rgba(237,237,237,${0.35 + binsS[i] * 0.65})`;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d, 1.4, 0, Math.PI * 2); ctx.fill();
       }
       raf = requestAnimationFrame(frame);
     };
@@ -69,13 +102,16 @@ export function VoiceVisual({ analyser, status }: { analyser: AnalyserNode | nul
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const ss = String(Math.floor(elapsed % 60)).padStart(2, '0');
   return (
-    <div className="relative h-[92px] border-b border-[var(--line)]">
+    <div className="relative h-[220px] shrink-0">
       <canvas ref={ref} className="absolute inset-0 h-full w-full" />
-      <div className="absolute right-3 top-2 flex items-center gap-1.5 text-[11px] text-[var(--dim)]">
-        <span className={`h-1.5 w-1.5 rounded-full ${status === 'listening' ? 'bg-[var(--pos)]' : status === 'muted' ? 'bg-[var(--neg)]' : 'bg-[var(--dim)]'}`} />
-        {status}
+      <div className="absolute left-5 top-4 flex items-center gap-2 text-[11px] text-[var(--dim)]">
+        <span className={`h-1.5 w-1.5 rounded-full transition-colors duration-200 ${status === 'listening' ? 'bg-[var(--pos)]' : status === 'muted' ? 'bg-[var(--neg)]' : 'bg-[#4a4a4f]'}`} />
+        <span>{status === 'listening' ? 'Listening' : status === 'muted' ? 'Muted' : 'Mic idle'}</span>
       </div>
+      <div className="num absolute right-5 top-4 text-[11px] text-[var(--dim)]">{mm}:{ss}</div>
     </div>
   );
 }
