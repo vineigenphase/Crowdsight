@@ -15,6 +15,8 @@ type Props = {
   version: number;
   selected: string | null;
   onSelect: (id: string | null) => void;
+  selectedModel: number | null;
+  onModel: (idx: number | null) => void;
 };
 
 const SEG_IDX: Record<Segment, number> = { general: 0, icp: 1, expert: 2, marketing: 3, skeptic: 4 };
@@ -39,6 +41,7 @@ export const CrowdNetwork = forwardRef<NetworkHandle, Props>(function CrowdNetwo
     monoT: 0, // 0 mixed → 1 mono, animated
     inflight: new Int16Array(7),
     bands: [] as { seg: number; y0: number; y1: number }[],
+    modelPos: [] as { x: number; y: number }[],
   });
 
   // Layout dots whenever the persona set or the size changes.
@@ -223,7 +226,9 @@ export const CrowdNetwork = forwardRef<NetworkHandle, Props>(function CrowdNetwo
       });
       for (let mi = 0; mi < 6; mi++) {
         if (mi > 0 && s.monoT > 0.98) continue;
+        s.modelPos[mi] = { x: xM, y: mY(mi) };
         const busy = s.inflight[mi] > 0 || (mi === 0 && s.inflight[6] > 0);
+        if (p.selectedModel === mi) { ctx.strokeStyle = '#EDEDED'; ctx.beginPath(); ctx.arc(xM, mY(mi), 10, 0, Math.PI * 2); ctx.stroke(); }
         node(ctx, xM, mY(mi), 5, 0.35 + s.modelGlow[mi] * 0.65, busy);
         const label = p.mono && mi === 0 ? 'mono · ' + (p.families[0] ?? '') : (p.families[mi] ?? `model ${mi + 1}`);
         tag(ctx, label, xM, mY(mi) - 14, 'center', mi > 0 ? 1 - s.monoT : 1);
@@ -247,11 +252,17 @@ export const CrowdNetwork = forwardRef<NetworkHandle, Props>(function CrowdNetwo
     const s = st.current;
     const r = canvasRef.current!.getBoundingClientRect();
     const x = e.clientX - r.left, y = e.clientY - r.top;
+    const visibleModels = props.mono ? 1 : 6;
+    for (let mi = 0; mi < visibleModels; mi++) {
+      const m = s.modelPos[mi];
+      if (m && (m.x - x) ** 2 + (m.y - y) ** 2 < 16 * 16) { props.onSelect(null); props.onModel(mi); return; }
+    }
     let best = -1, bd = 64;
     for (let i = 0; i < s.shown.length; i++) {
       const d = (s.pos[i * 2] - x) ** 2 + (s.pos[i * 2 + 1] - y) ** 2;
       if (d < bd) { bd = d; best = i; }
     }
+    props.onModel(null);
     props.onSelect(best >= 0 ? props.personas[best].id : null);
   };
 

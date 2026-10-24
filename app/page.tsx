@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CrowdNetwork, NetworkHandle } from '@/components/CrowdNetwork';
 import { FinancialsLens, MarketingLens, ProductLens } from '@/components/LensTabs';
 import { SegmentTabs } from '@/components/SegmentTabs';
-import { Dock, LoopTimeline, Pending, PersonaCard, Stage, Status, TopBar, Version } from '@/components/Shell';
+import { Dock, LoopTimeline, ModelCard, ModelStat, Pending, PersonaCard, Stage, Status, TopBar, Version } from '@/components/Shell';
 import { useVoice, VoiceVisual } from '@/components/VoiceVisual';
 import { streamSSE } from '@/lib/client';
 import { defaultConfigs, InputType, parsePrice, samplePersonas, SegmentConfig, splitSentences } from '@/lib/personas';
@@ -37,6 +37,8 @@ export default function Home() {
   const [mono, setMono] = useState(false);
   const [ver, setVer] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<number | null>(null);
+  const modelStats = useRef(new Map<string, ModelStat>());
   const [versions, setVersions] = useState<Version[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
   const [viewing, setViewing] = useState<number | null>(null);
@@ -102,6 +104,15 @@ export default function Home() {
   const handleCrowdEvent = (target: Map<string, Reaction>, event: string, data: any) => {
     if (event === 'meter') setMeter({ calls: data.calls, tokens: data.promptTokens + data.completionTokens });
     if (event === 'batch_start' || event === 'batch_done' || event === 'batch_failed') net.current?.onEvent(event, data);
+    if ((event === 'batch_done' || event === 'batch_failed') && data.model) {
+      const m = modelStats.current.get(data.model) ?? { id: data.model, batches: 0, failed: 0, ms: 0, tokens: 0, reacted: 0, stanceSum: 0, quotes: [] as string[] };
+      if (event === 'batch_failed') m.failed++;
+      else {
+        m.batches++; m.ms += data.ms ?? 0; m.tokens += data.tokens ?? 0;
+        for (const r of data.reactions as Reaction[]) { m.reacted++; m.stanceSum += r.stance; if (r.quote && m.quotes.length < 6) m.quotes.push(r.quote); }
+      }
+      modelStats.current.set(data.model, m);
+    }
     if (event === 'batch_done' && data.phase !== 'variant') {
       for (const r of data.reactions as Reaction[]) target.set(r.personaId, r);
       bump();
@@ -120,6 +131,7 @@ export default function Home() {
     if (!log.current.events.length) log.current.state = { type, text, price, configs };
     const target = asMono ? monoRef.current : mixedRef.current;
     target.clear();
+    modelStats.current.clear();
     if (!asMono) { setVersions([]); setPending(null); setThemes(null); setNote(null); setPrevPrice(null); versionReactions.current.clear(); }
     net.current?.reset();
     bump();
@@ -332,7 +344,12 @@ export default function Home() {
           </div>
           <div className="relative min-h-0 flex-1 overflow-auto">
             <div className={tab === 'Crowd' ? 'absolute inset-0' : 'hidden'}>
-              <CrowdNetwork ref={net} personas={personas} sentences={sentences} families={status?.families ?? []} mono={mono} reactions={display} version={ver} selected={selected} onSelect={setSelected} />
+              <CrowdNetwork ref={net} personas={personas} sentences={sentences} families={status?.families ?? []} mono={mono} reactions={display} version={ver} selected={selected} onSelect={setSelected} selectedModel={selectedModel} onModel={setSelectedModel} />
+              {!sel && selectedModel == null && <div className="pointer-events-none absolute bottom-3 left-4 text-[11px] text-[#55555a]">Click a model node to see its Nebius ID and stats, or a dot to read a persona.</div>}
+              {selectedModel != null && (() => {
+                const id = mono ? status?.roster?.mono : status?.roster?.crowd?.[selectedModel];
+                return id ? <ModelCard idx={selectedModel} id={id} family={mono ? `mono · ${status?.families?.[0] ?? ''}` : status?.families?.[selectedModel] ?? ''} stat={modelStats.current.get(id)} onClose={() => setSelectedModel(null)} /> : null;
+              })()}
               {sel && <PersonaCard p={sel} r={display.get(sel.id)} model={display.get(sel.id)?.model} onClose={() => setSelected(null)} />}
             </div>
             {tab === 'Segments' && <SegmentTabs configs={configs} onChange={changeConfigs} scores={summary.segments} />}

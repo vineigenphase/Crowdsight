@@ -5,7 +5,7 @@ import { Reaction } from '@/lib/score';
 export type Stage = 'Input' | 'Crowd' | 'Optimise' | 'Result';
 const STAGES: Stage[] = ['Input', 'Crowd', 'Optimise', 'Result'];
 
-export type Status = { ok: boolean; mock?: boolean; latency?: number; families?: string[]; error?: string } | null;
+export type Status = { ok: boolean; mock?: boolean; latency?: number; families?: string[]; roster?: { crowd: string[]; strong: string; vision: string | null; mono: string }; error?: string } | null;
 
 export function TopBar({ stage, status, demo, meter, onExit, onSaveDemo }: { stage: Stage; status: Status; demo: boolean; meter: { calls: number; tokens: number }; onExit: () => void; onSaveDemo?: () => void }) {
   return (
@@ -151,5 +151,41 @@ export function Dock(props: {
         </div>
       </div>
     </footer>
+  );
+}
+
+export type ModelStat = { id: string; batches: number; failed: number; ms: number; tokens: number; reacted: number; stanceSum: number; quotes: string[] };
+
+export function ModelCard({ idx, id, family, stat, onClose }: { idx: number; id: string; family: string; stat: ModelStat | undefined; onClose: () => void }) {
+  const avg = stat && stat.batches ? stat.ms / stat.batches : null;
+  return (
+    <div className="absolute bottom-3 left-3 w-[320px] rounded-[var(--radius)] border border-[var(--line2)] bg-[var(--panel2)] p-3 text-[12px] shadow-2xl" style={{ animation: 'rise 200ms ease-out' }}>
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-[11px] text-[var(--dim)]">Model {idx + 1} of the crowd · Nebius Token Factory</div>
+          <div className="mt-0.5 text-[13px]">{family}</div>
+        </div>
+        <button onClick={onClose} className="text-[var(--dim)] hover:text-[var(--text)]">×</button>
+      </div>
+      <div className="num mt-2 break-all rounded border border-[var(--line)] px-2 py-1 text-[11px]">{id}</div>
+      {stat && stat.batches + stat.failed > 0 ? (
+        <>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+            <KV k="batches" v={`${stat.batches}${stat.failed ? ` / ${stat.failed} failed` : ''}`} />
+            <KV k="avg latency" v={avg != null ? `${(avg / 1000).toFixed(1)}s` : '—'} />
+            <KV k="tokens" v={`${(stat.tokens / 1000).toFixed(1)}k`} />
+            <KV k="people voiced" v={String(stat.reacted)} />
+            <KV k="mean stance" v={stat.reacted ? (stat.stanceSum / stat.reacted).toFixed(2) : '—'} />
+          </div>
+          {stat.quotes.length > 0 && (
+            <div className="mt-3 space-y-1.5 border-t border-[var(--line)] pt-2">
+              {stat.quotes.slice(0, 2).map((q, i) => <div key={i} className="text-[11px] text-[var(--dim)]">&ldquo;{q}&rdquo;</div>)}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="mt-3 text-[11px] text-[var(--dim)]">No calls in this run yet. Run the crowd to see this model&apos;s live stats.</div>
+      )}
+    </div>
   );
 }
