@@ -116,7 +116,7 @@ export async function chatJSON(
       }
       meter.failed++;
       console.warn(`[crowdsight] ${model} attempt ${attempt + 1} failed: status=${status} ${String((e as Error).message).slice(0, 140)}`);
-      const wait = status === 429 ? 1500 * (attempt + 1) : 400;
+      const wait = status === 429 || status === 503 || status === 529 ? 2000 * (attempt + 1) + Math.random() * 1000 : 400;
       await new Promise((r) => setTimeout(r, wait));
     }
   }

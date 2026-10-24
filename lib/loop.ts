@@ -102,7 +102,15 @@ export async function optimise(
     text = best.text;
     price = best.price;
     emit('apply', { iter, text, price, sampleScore: best.score });
-    reactions = await runCrowd(personas, type, text, price, emit, { tag: { phase: 'confirm', iter } });
+    const confirmRun = await runCrowd(personas, type, text, price, emit, { tag: { phase: 'confirm', iter } });
+    if (confirmRun.size < personas.length * 0.5) {
+      // Provider trouble: keep the sample result, mark it unconfirmed, and stop rather than record a false score.
+      emit('version', { version: iter, text, price, score: best.score, lever: proposal.lever, change: `${proposal.reason} (sample score; full confirm incomplete)` });
+      emit('iter_done', { iter, applied: true, baseline, best: best.score, confirmed: null });
+      emit('loop_done', { reason: `Confirm run incomplete (${confirmRun.size}/${personas.length} reactions); stopped.`, score: best.score });
+      return;
+    }
+    reactions = confirmRun;
     const confirmed = summarise(personas, reactions, configs).launch;
     emit('version', { version: iter, text, price, score: confirmed, lever: proposal.lever, change: proposal.reason });
     emit('iter_done', { iter, applied: true, baseline, best: best.score, confirmed });

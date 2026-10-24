@@ -73,7 +73,12 @@ export default function Home() {
         setType(s.type); setText(s.text); setPrice(s.price); setConfigs(s.configs);
       }).catch(() => setError('No recorded demo found at /demo/run.json'));
     }
-    const poll = () => fetch('/api/status').then((r) => r.json()).then(setStatus).catch(() => setStatus({ ok: false }));
+    // A failed poll keeps the last known roster so model labels never drop out mid-run.
+    const poll = () =>
+      fetch('/api/status')
+        .then((r) => r.json())
+        .then((s: NonNullable<Status>) => setStatus((prev) => (s.ok ? s : { ...prev, ...s, families: prev?.families })))
+        .catch(() => setStatus((prev) => ({ ...prev, ok: false })));
     poll();
     const t = setInterval(poll, 20000);
     return () => clearInterval(t);
