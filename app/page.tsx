@@ -10,10 +10,12 @@ import { defaultConfigs, InputType, parsePrice, samplePersonas, SegmentConfig, s
 import { diversity, financials, Reaction, summarise } from '@/lib/score';
 import { Transcript } from '@/components/Transcript';
 import { FeedRow, Favicons, LiveFeed } from '@/components/LiveFeed';
+import { SummaryPanel } from '@/components/SummaryPanel';
+import type { FinalSummary } from '@/lib/loop';
 
 const N = 1000;
 const SEED = 7;
-const TABS = ['Crowd', 'Feed', 'Segments', 'Marketing', 'Product', 'Financials'] as const;
+const TABS = ['Crowd', 'Feed', 'Summary', 'Segments', 'Marketing', 'Product', 'Financials'] as const;
 type Tab = (typeof TABS)[number];
 
 const EXAMPLES: Record<InputType, string> = {
@@ -24,7 +26,7 @@ const EXAMPLES: Record<InputType, string> = {
 
 type LogEvent = { t: number; stream: 'crowd' | 'optimise' | 'ground'; event: string; data: unknown };
 type Brief = { competitors: { name: string; price: string | null; url: string }[]; painPoints: string[]; trends: string[]; sources: { title: string; url: string }[] };
-const FEED_EVENTS = new Set(['ground_source', 'brief', 'batch_done', 'batch_failed', 'proposal', 'variant_done', 'baseline', 'apply', 'version', 'run_done', 'loop_done']);
+const FEED_EVENTS = new Set(['ground_source', 'brief', 'batch_done', 'batch_failed', 'proposal', 'variant_done', 'baseline', 'apply', 'version', 'run_done', 'loop_done', 'summary_start', 'summary']);
 
 export default function Home() {
   const [demo, setDemo] = useState(false);
@@ -45,6 +47,8 @@ export default function Home() {
   const briefFor = useRef<string | null>(null);
   const [feed, setFeed] = useState<FeedRow[]>([]);
   const [briefOpen, setBriefOpen] = useState(true);
+  const [finalSum, setFinalSum] = useState<(FinalSummary & { score?: number }) | null>(null);
+  const [sumPending, setSumPending] = useState(false);
   const [selectedModel, setSelectedModel] = useState<number | null>(null);
   const modelStats = useRef(new Map<string, ModelStat>());
   const [versions, setVersions] = useState<Version[]>([]);
@@ -184,6 +188,7 @@ export default function Home() {
     setPending(null);
     setNote(null);
     setPrevPrice(price);
+    setFinalSum(null);
     const startText = text;
     let confirmMap = new Map<string, Reaction>();
     try {
@@ -222,7 +227,16 @@ export default function Home() {
           case 'iter_done':
             if (!data.applied) setPending((p) => (p ? { ...p, applied: true } : p));
             break;
+          case 'summary_start':
+            setSumPending(true);
+            break;
+          case 'summary':
+            setFinalSum(data);
+            setSumPending(false);
+            setTab('Summary');
+            break;
           case 'loop_done':
+            setSumPending(false);
             setNote(data.reason);
             setStage('Result');
             break;
@@ -397,6 +411,7 @@ export default function Home() {
               })()}
               {sel && <PersonaCard p={sel} r={display.get(sel.id)} model={display.get(sel.id)?.model} onClose={() => setSelected(null)} />}
             </div>
+            {tab === 'Summary' && <SummaryPanel summary={finalSum} pending={sumPending} score={versions.length ? versions[versions.length - 1].score : null} startScore={versions.length ? versions[0].score : null} />}
             {tab === 'Feed' && <LiveFeed rows={feed} personas={personaById} families={status?.families ?? []} />}
             {tab === 'Segments' && <SegmentTabs configs={configs} onChange={changeConfigs} scores={summary.segments} />}
             {tab === 'Marketing' && <MarketingLens personas={personas} reactions={mixedRef.current} segments={summary.segments} />}

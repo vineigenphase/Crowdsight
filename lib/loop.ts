@@ -51,6 +51,60 @@ OBJECTIONS (${objections.length}): ${objections.join(' | ')}`;
   };
 }
 
+export type FinalSummary = {
+  verdict: string;
+  headline: string;
+  whatChanged: string;
+  worked: string[];
+  risks: string[];
+  segments: { segment: string; line: string }[];
+  nextSteps: string[];
+};
+
+/** One strong-model read of the whole final crowd plus the loop history. */
+async function finalSummary(type: InputType, text0: string, text: string, price0: number | null, price: number | null, personas: Persona[], reactions: Map<string, Reaction>, configs: SegmentConfig[], versions: { version: number; score: number; lever: string | null; change: string }[], reason: string, brief?: string): Promise<FinalSummary | null> {
+  if (isMock()) return { verdict: 'Promising', headline: 'Mock summary', whatChanged: 'Mock', worked: ['Mock'], risks: ['Mock'], segments: [], nextSteps: ['Mock'] };
+  const s = summarise(personas, reactions, configs);
+  const rs = [...reactions.values()];
+  const byId = new Map(personas.map((p) => [p.id, p]));
+  const sorted = [...rs].filter((r) => r.quote).sort((a, b) => b.stance - a.stance);
+  const voice = (r: Reaction) => { const p = byId.get(r.personaId); return `${p ? `${SEGMENT_LABEL[p.segment]}, ${p.role}` : ''} (${r.stance.toFixed(2)}): "${r.quote}"${r.comparedTo ? ` [vs ${r.comparedTo}]` : ''}`; };
+  const fin = financials(rs, price);
+  const user = `You write the final briefing for a startup founder after a simulated market test of ${rs.length} personas and an optimisation loop. Be specific, plain-spoken and honest; this is a simulated market response and an early signal, never a prediction.
+
+Return JSON {"verdict": "Strong"|"Promising"|"Mixed"|"Weak", "headline": string (<=16 words), "whatChanged": string (<=30 words, what the optimiser changed and the score effect), "worked": [3 short bullets], "risks": [3 short bullets, cite objections], "segments": [{"segment": string, "line": string <=14 words}] one per segment, "nextSteps": [3 concrete actions]}
+
+INPUT TYPE: ${type}
+ORIGINAL (£${price0 ?? '-'}): ${text0}
+FINAL (£${price ?? '-'}): ${text}
+VERSIONS: ${versions.map((v) => `v${v.version} ${v.score.toFixed(1)} ${v.lever ?? 'baseline'}: ${v.change}`).join(' | ')}
+LOOP ENDED: ${reason}
+LAUNCH SCORE: ${s.launch.toFixed(1)}; DIVERSITY ${s.diversity.toFixed(0)}
+SEGMENTS: ${s.segments.map((g) => `${SEGMENT_LABEL[g.segment]} score ${g.score.toFixed(1)}, intent ${(g.intent * 100).toFixed(0)}%, share ${(g.share * 100).toFixed(0)}%`).join('; ')}
+PRICE: ${fin.payPct.toFixed(0)}% would pay £${price ?? '-'}; ${fin.interested} interested of ${rs.length}
+${brief ? `MARKET: ${brief}
+` : ''}TOP OBJECTIONS: ${topObjections(rs, 8).map((o) => `${o.theme} (${o.count})`).join('; ')}
+MOST POSITIVE: ${sorted.slice(0, 6).map(voice).join(' | ')}
+MOST NEGATIVE: ${sorted.slice(-6).map(voice).join(' | ')}`;
+  try {
+    const roster = await getRoster();
+    const res = await chatJSON(roster.strong, 'You are a sharp go-to-market advisor. Output only JSON.', user, { temperature: 0.4, maxTokens: 2500, retries: 3 });
+    const d = res.data as Partial<FinalSummary>;
+    const arr = (x: unknown) => (Array.isArray(x) ? x.map(String).slice(0, 5) : []);
+    return {
+      verdict: String(d.verdict ?? 'Mixed'),
+      headline: String(d.headline ?? ''),
+      whatChanged: String(d.whatChanged ?? ''),
+      worked: arr(d.worked),
+      risks: arr(d.risks),
+      segments: Array.isArray(d.segments) ? d.segments.slice(0, 5).map((x) => ({ segment: String(x.segment), line: String(x.line) })) : [],
+      nextSteps: arr(d.nextSteps),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function optimise(
   type: InputType,
   text0: string,
@@ -58,13 +112,41 @@ export async function optimise(
   personas: Persona[],
   configs: SegmentConfig[],
   reactions0: Map<string, Reaction> | null,
-  emit: Emit,
+  outerEmit: Emit,
   brief?: string,
+) {
+  // Hold back loop_done so the final summary can run first; track the latest state for it.
+  const state = { text: text0, price: price0, reactions: reactions0 ?? new Map<string, Reaction>(), versions: [] as { version: number; score: number; lever: string | null; change: string }[] };
+  let done: { reason: string; score: number } | null = null;
+  const emit: Emit = (event, data) => {
+    if (event === 'loop_done') { done = data as { reason: string; score: number }; return; }
+    if (event === 'version') { const v = data as { version: number; text: string; price: number | null; score: number; lever: string | null; change: string }; state.versions.push(v); state.text = v.text; state.price = v.price; }
+    outerEmit(event, data);
+  };
+  await optimiseLoop(type, text0, price0, personas, configs, reactions0, emit, brief, state);
+  const end = done ?? { reason: 'Loop ended.', score: 0 };
+  outerEmit('summary_start', {});
+  const summary = await finalSummary(type, text0, state.text, price0, state.price, personas, state.reactions, configs, state.versions, end.reason, brief);
+  if (summary) outerEmit('summary', { ...summary, score: end.score, versions: state.versions.length });
+  outerEmit('loop_done', end);
+}
+
+async function optimiseLoop(
+  type: InputType,
+  text0: string,
+  price0: number | null,
+  personas: Persona[],
+  configs: SegmentConfig[],
+  reactions0: Map<string, Reaction> | null,
+  emit: Emit,
+  brief: string | undefined,
+  state: { reactions: Map<string, Reaction> },
 ) {
   const sample = stratifiedSample(personas, SAMPLE);
   let text = text0;
   let price = price0;
   let reactions = reactions0 && reactions0.size > personas.length * 0.5 ? reactions0 : await runCrowd(personas, type, text, price, emit, { brief, tag: { phase: 'confirm', iter: 0 } });
+  state.reactions = reactions;
   let current = summarise(personas, reactions, configs).launch;
   emit('version', { version: 0, text, price, score: current, lever: null, change: 'Original input' });
   const tried: string[] = [];
@@ -125,6 +207,7 @@ export async function optimise(
       return;
     }
     reactions = confirmRun;
+    state.reactions = reactions;
     const confirmed = summarise(personas, reactions, configs).launch;
     emit('version', { version: iter, text, price, score: confirmed, lever: proposal.lever, change: proposal.reason });
     emit('iter_done', { iter, applied: true, baseline, best: best.score, confirmed });

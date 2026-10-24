@@ -131,6 +131,16 @@ function Row({ r, personas, families }: { r: FeedRow; personas: Map<string, Pers
       return <div className="flex items-center gap-2 text-[12px]"><Tag label="Version" color="#3DDC97" /><span>v{d.version}</span><span className="num">{Number(d.score).toFixed(1)}</span><span className="truncate text-[var(--dim)]">{d.change}</span></div>;
     case 'run_done':
       return <div className="flex items-center gap-2 text-[12px]"><Tag label="Done" color="#EDEDED" /><span className="num">{d.summary?.n} reactions · score {Number(d.summary?.launch).toFixed(1)} · {Math.round(d.ms / 1000)}s</span></div>;
+    case 'summary_start':
+      return <div className="flex items-center gap-2 text-[12px]"><Tag label="Summary" color={BRAND} /><span className="text-[var(--dim)]">Reading every final reaction and the loop history…</span></div>;
+    case 'summary':
+      return (
+        <div className="card p-3 text-[12px]">
+          <div className="flex items-center gap-2"><Tag label="Summary" color={BRAND} /><Tag label={d.verdict} color="#EDEDED" /></div>
+          <div className="mt-1.5 text-[14px]">{d.headline}</div>
+          {d.nextSteps?.[0] && <div className="mt-1 text-[var(--dim)]">Next: {d.nextSteps[0]}</div>}
+        </div>
+      );
     case 'loop_done':
       return <div className="flex items-center gap-2 text-[12px]"><Tag label="Done" color="#EDEDED" /><span className="text-[var(--dim)]">{d.reason}</span></div>;
     default:
