@@ -7,7 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@1&display=swap">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="ws.css?v=3">
 </head>
 <body>
 <!--APP-START-->
@@ -33,81 +34,78 @@
     <div class="hcard"><span class="n">04</span><h3>Let the agent fix it</h3><p>It changes one thing at a time, re-tests on the crowd and keeps only what wins.</p></div>
   </section>
   <section class="appsec" id="app" aria-label="Workspace">
-    <div class="apphead"><h2>Run your first test.</h2><p>Pick a test type, type or speak your pitch, and watch 1,000 personas on 6 Nebius models react, grounded by Tavily.</p></div>
+    <div class="apphead"><h2>Run your first test.</h2><p>Pick a mode, set your crowd, and pitch. Click any segment to talk to it. Example data.</p></div>
     <div class="appcard">
-<div class="shell">
-  <aside class="side" id="side" aria-label="Sidebar">
-    <div class="logo wordmark" style="font-size:18px"><svg width="20" height="20" viewBox="0 0 22 22" aria-hidden="true"><g fill="#0B0B10"><circle cx="4" cy="4" r="2.1"/><circle cx="11" cy="4" r="2.1"/><circle cx="18" cy="4" r="2.1"/><circle cx="4" cy="11" r="2.1"/><circle cx="18" cy="11" r="2.1"/><circle cx="4" cy="18" r="2.1"/><circle cx="11" cy="18" r="2.1"/><circle cx="18" cy="18" r="2.1"/></g><circle cx="11" cy="11" r="3.1" fill="#4F46E5"/></svg>crowdsight</div>
-    <button class="newbtn" id="newBtn" type="button"><span class="plus">+</span>New test</button>
-    <div>
-      <div class="navlbl">Test type</div>
-      <nav class="nav" id="nav">
-        <button type="button" data-cat="general" aria-current="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>General</button>
-        <button type="button" data-cat="ads" aria-current="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z"/><path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/></svg>Ads</button>
-        <button type="button" data-cat="pricing" aria-current="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12 12 20l-8-8V4h8l8 8Z"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>Pricing</button>
-        <button type="button" data-cat="launch" aria-current="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M14 4c3-1 6-1 6-1s0 3-1 6l-7 7-5-5 7-7Z"/><circle cx="15" cy="9" r="1.5"/></svg>Product launch</button>
-      </nav>
+<div class="ws p1" id="ws">
+  <!-- Chat-selection column -->
+  <aside class="w-chats" id="chats" aria-label="Chats">
+    <div class="w-chats-top">
+      <button class="w-ico" id="toggleChats" type="button" aria-label="Collapse chats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <span class="w-brand">crowdsight</span>
     </div>
-    <div style="min-height:0;display:flex;flex-direction:column">
-      <div class="navlbl">Recent</div>
-      <div class="recent" id="recent"><span class="dim" style="font-size:12.5px;padding:0 10px">Your tests will appear here.</span></div>
-    </div>
-    <div class="foot">
-      <button class="btn" id="beBtn" type="button" style="justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/></svg>See all 1,000 personas</button>
-      <div class="status"><span><i class="dot" style="background:var(--pos)"></i>Nebius · 6 model families</span><span><i class="dot" style="background:#0EA5A0"></i>Tavily · live web search</span></div>
-    </div>
+    <div class="w-chatlist" id="chatList"></div>
+    <button class="w-new" id="newChat" type="button"><span>+</span><b>New chat</b></button>
+    <button class="w-user" id="userBtn" type="button" aria-label="Profile and settings"><span class="w-av">VS</span><b>Vinu</b><em>Founder plan</em></button>
   </aside>
 
-  <main class="main" id="main">
-    <div class="topbar">
-      <button class="icon-btn menu" id="menuBtn" type="button" aria-label="Open sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-      <span class="title" id="title"></span>
-      <div class="r"><button class="btn" id="detailsBtn" type="button" hidden>Details</button></div>
+  <section class="w-main" id="mainCol">
+    <!-- Page 1 top boxes -->
+    <div class="w-topboxes">
+      <div class="w-mode" id="modeBox">
+        <button class="w-modebtn" id="modeBtn" type="button" aria-haspopup="listbox" aria-expanded="false"><small>Mode</small><b id="modeLabel">General</b><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="w-pop w-modemenu" id="modeMenu" role="listbox" hidden></div>
+      </div>
+      <div class="w-popbox" id="popBox">
+        <button class="w-popbtn" id="popBtn" type="button" aria-expanded="false"><small>Population</small><span class="w-popbar" id="popBar"></span><b class="num">1,000</b></button>
+        <div class="w-pop w-sliders" id="popMenu" hidden></div>
+      </div>
     </div>
-
-    <section class="home" id="home">
-      <div class="hello"><span id="hello">What are you launching?</span></div>
-      <p class="sub" id="homeSub">Test it on 1,000 people before you tell one.</p>
-      <div id="composerSlot"></div>
-      <div class="ideas" id="ideas"></div>
-    </section>
-
-    <section class="thread" id="thread" hidden><div class="tin" id="tin"></div></section>
-    <div class="dock" id="dock" hidden><div style="width:min(720px,100%)"><div id="dockSlot"></div><div class="foot-note">Simulated market response. An early signal, not a prediction.</div></div></div>
-
-    <form class="composer" id="composer" autocomplete="off">
-      <textarea id="inp" rows="2" aria-label="What are you testing"></textarea>
-      <div class="crow">
-        <label class="pill" for="mkt">Market <input class="mkt" id="mkt" value="pay-per-visit gyms, London"></label>
-        <label class="pill" for="pr" id="prPill">£ <input class="pr num" id="pr" value="14"> /mo</label>
-        <div class="r">
-          <button type="button" class="icon-btn" id="micBtn" aria-label="Speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></button>
-          <button type="submit" class="send" aria-label="Run on the crowd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+    <!-- Page 1 hero -->
+    <div class="w-hero" id="hero">
+      <div class="w-orbit" aria-hidden="true"><canvas id="mini"></canvas></div>
+      <h3 id="heroTitle">What are you launching?</h3>
+      <p id="heroSub">Your pitch goes to 1,000 people. Drag files or an old chat in to add context.</p>
+    </div>
+    <!-- Thread (page 2) -->
+    <div class="w-threadhead" id="threadHead"><span class="w-modetag" id="modeTag">General</span><span class="w-lock">Mode locked for this chat</span></div>
+    <div class="w-thread" id="thread"></div>
+    <!-- Composer -->
+    <form class="w-composer" id="composer" autocomplete="off">
+      <div class="w-chips" id="chips"></div>
+      <textarea id="inp" rows="2" aria-label="Message"></textarea>
+      <div class="w-crow">
+        <div class="w-plus">
+          <button class="w-ico" type="button" id="plusBtn" aria-label="Attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+          <div class="w-pop w-plusmenu" id="plusMenu" hidden>
+            <button type="button" data-k="file">Files</button><button type="button" data-k="photo">Photos</button><button type="button" data-k="video">Videos</button><button type="button" data-k="ref">Reference a chat</button>
+          </div>
         </div>
+        <label class="w-field" id="priceField">£<input id="price" class="num" value="14" aria-label="Price per month">/mo</label>
+        <button class="w-ico" type="button" id="micBtn" aria-label="Speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></button>
+        <button class="w-send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
       </div>
+      <input type="file" id="fileIn" multiple hidden>
     </form>
+  </section>
 
-    <section class="voice" id="voice" aria-label="Voice mode">
-      <div class="orbwrap"><canvas id="orb" aria-hidden="true"></canvas></div>
-      <div class="vstate"><i class="dot" id="vdot" style="background:var(--pos)"></i><span id="vstate">Listening</span></div>
-      <div class="vtext" id="vtext"><span class="interim">Pitch your launch out loud.</span></div>
-      <div class="vctl">
-        <button class="round" id="muteBtn" type="button" aria-label="Mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
-        <button class="round end" id="endBtn" type="button" aria-label="Done speaking"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg></button>
-      </div>
-      <div class="vnote" id="vnote">Your words go straight into the test.</div>
-    </section>
+  <div class="w-gut" data-g="a" aria-hidden="true"></div>
 
-    <aside class="drawer" id="drawer" aria-label="Details">
-      <div class="dh"><div class="tabs" role="tablist" id="dtabs">
-        <button role="tab" data-t="models" aria-selected="true">Models</button>
-        <button role="tab" data-t="segments" aria-selected="false">Segments</button>
-        <button role="tab" data-t="marketing" aria-selected="false">Marketing</button>
-        <button role="tab" data-t="pricing" aria-selected="false">Pricing</button>
-      </div><button class="icon-btn" id="dclose" type="button" aria-label="Close details" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
-      <div class="pane" id="dpane"></div>
-    </aside>
-  </main>
+  <!-- Middle column: Summary + Advice -->
+  <section class="w-mid" id="midCol">
+    <div class="w-box w-summary" id="summary"></div>
+    <div class="w-hgut" id="hgut" aria-hidden="true"></div>
+    <div class="w-box w-advice" id="advice"></div>
+  </section>
+
+  <div class="w-gut" data-g="b" aria-hidden="true"></div>
+
+  <!-- Persona details column -->
+  <section class="w-persona" id="personaCol" aria-label="Persona details"></section>
+
+  <!-- Voice overlay -->
+  <div class="w-voice" id="voice"><canvas id="orb"></canvas><p id="vtext">Pitch your launch out loud.</p><div class="w-vctl"><button class="w-round" id="vMute" type="button" aria-label="Mute">Mute</button><button class="w-round w-end" id="vEnd" type="button">Done</button></div><small id="vnote"></small></div>
+  <div class="w-pop w-ctx" id="ctx" hidden><button type="button" data-a="rename">Rename</button><button type="button" data-a="ref">Reference in this chat</button><button type="button" data-a="delete" class="w-danger">Delete</button></div>
+  <div class="w-pop w-refpick" id="refPick" hidden></div>
 </div>
     </div>
   </section>
@@ -133,6 +131,6 @@
   </div>
 </section>
 <!--APP-END-->
-<script src="app.js"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

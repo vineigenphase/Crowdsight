@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crowdsight Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/studio/studio.css">
+</head>
+<body>
+<div id="app" class="page1">
+
+  <!-- Chat-selection column -->
+  <aside id="chats" aria-label="Tests">
+    <div class="chats-top">
+      <button class="icon" id="toggleChats" aria-label="Toggle test list" title="Toggle list">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <span class="brand">Crowdsight</span>
+    </div>
+    <div class="chats-label">Tests</div>
+    <ol id="chatList"></ol>
+    <button id="newChat" class="newchat"><span class="plus">+</span><span class="lbl">New test</span></button>
+    <button id="userBtn" class="user" aria-label="Profile and settings"><span class="avatar" id="avatar">F</span><span class="lbl" id="userName">Founder</span></button>
+  </aside>
+
+  <!-- PAGE 1: set-up -->
+  <section id="setup">
+    <div class="setup-top">
+      <div class="modebox" id="modeBox">
+        <div class="kicker">Test type</div>
+        <button id="modeBtn" class="modebtn" aria-haspopup="listbox" aria-expanded="false"><span id="modeLabel">General</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 9 6 6 6-6"/></svg></button>
+        <ul id="modeMenu" role="listbox" hidden></ul>
+      </div>
+      <div class="popbox">
+        <div class="kicker">Who are the 1,000? <span class="hint">drag the dividers</span></div>
+        <div id="popBar" class="popbar" aria-label="Population mix"></div>
+        <div id="popLegend" class="poplegend"></div>
+      </div>
+    </div>
+    <div class="setup-hero">
+      <div class="hero-kicker" id="heroKicker">General · 1,000 simulated people · 6 Nebius models · Tavily web grounding</div>
+      <h1 id="heroTitle">What are you putting in front of a thousand people?</h1>
+    </div>
+    <div class="setup-composer" id="setupComposerSlot"></div>
+  </section>
+
+  <!-- PAGE 2: workspace -->
+  <section id="work" hidden>
+    <div id="chatPane" class="pane">
+      <div class="pane-head">
+        <span class="lockmode" id="lockMode" title="Open a new test to change the type">General</span>
+        <span class="pane-title" id="chatTitle"></span>
+      </div>
+      <div id="ledger" class="ledger"></div>
+      <div id="workComposerSlot"></div>
+    </div>
+    <div class="vhandle" data-resize="chat" aria-hidden="true"></div>
+    <div id="midPane" class="pane mid">
+      <div id="summaryBox" class="box summary"></div>
+      <div class="hhandle" data-resize="sum" aria-hidden="true"></div>
+      <div id="adviceBox" class="box advice"></div>
+    </div>
+    <div class="vhandle" data-resize="det" id="detHandle" hidden aria-hidden="true"></div>
+    <div id="detPane" class="pane det" hidden></div>
+  </section>
+
+  <div id="ctx" class="menu ctx" role="menu" hidden>
+    <button type="button" data-ctx="rename" role="menuitem">Rename</button>
+    <button type="button" data-ctx="ref" role="menuitem">Reference in current test</button>
+    <button type="button" data-ctx="delete" role="menuitem" class="danger">Delete</button>
+  </div>
+  <div id="refMenu" class="menu" role="menu" hidden></div>
+
+  <dialog id="profile">
+    <form method="dialog" class="profile">
+      <h2>Profile</h2>
+      <label>Name <input id="pfName" maxlength="40"></label>
+      <label>Default test type <select id="pfMode"></select></label>
+      <div class="pf-actions"><button value="clear" class="ghost danger" id="pfClear">Clear all tests</button><button value="save" class="solid">Save</button></div>
+    </form>
+  </dialog>
+</div>
+<script src="/studio/studio.js"></script>
+</body>
+</html>

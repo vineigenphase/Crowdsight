@@ -123,4 +123,26 @@ export async function chatJSON(
   throw lastErr;
 }
 
+/** Plain-text chat turn (persona and agent conversations). Reasoning blocks are stripped. */
+export async function chatText(model: string, messages: { role: 'system' | 'user' | 'assistant'; content: string }[], opts: { maxTokens?: number; temperature?: number } = {}): Promise<string> {
+  if (MOCK) return 'Mock reply: I would want to see the real locations before committing.';
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      meter.calls++;
+      const res = await nebius().chat.completions.create({ model, messages, temperature: opts.temperature ?? 0.8, max_tokens: opts.maxTokens ?? 1500 }, { timeout: 60_000 });
+      meter.promptTokens += res.usage?.prompt_tokens ?? 0;
+      meter.completionTokens += res.usage?.completion_tokens ?? 0;
+      const text = (res.choices[0]?.message?.content ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      if (text) return text;
+      throw new Error('empty reply');
+    } catch (e) {
+      lastErr = e;
+      meter.failed++;
+      await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 export const isMock = () => MOCK;

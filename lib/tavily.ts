@@ -18,6 +18,19 @@ export async function search(q: string, opts: Record<string, unknown> = {}): Pro
   return out;
 }
 
+/** Turn a free-text pitch into a short searchable market category. */
+export async function deriveCategory(pitch: string): Promise<string> {
+  if (MOCK) return 'pay-per-visit gyms, London';
+  try {
+    const roster = await getRoster();
+    const { data } = await chatJSON(roster.strong, 'Output only JSON.', `Name the market this pitch competes in as a short web-search phrase (3-6 words, include the city or country if stated). Return {"category": string}.\n\nPITCH: ${pitch.slice(0, 800)}`, { temperature: 0.1, maxTokens: 300 });
+    const c = String((data as { category?: string }).category ?? '').trim();
+    return c || pitch.slice(0, 60);
+  } catch {
+    return pitch.slice(0, 60);
+  }
+}
+
 /** 3 searches in parallel → one Nebius strong-model call → Market Brief. */
 export async function ground(category: string, emit: (e: string, d: unknown) => void): Promise<MarketBrief> {
   const queries: [string, Record<string, unknown>][] = [
