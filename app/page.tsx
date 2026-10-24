@@ -46,7 +46,7 @@ export default function Home() {
   const [brief, setBrief] = useState<Brief | null>(null);
   const briefFor = useRef<string | null>(null);
   const [feed, setFeed] = useState<FeedRow[]>([]);
-  const [briefOpen, setBriefOpen] = useState(true);
+  const [briefOpen, setBriefOpen] = useState(false);
   const [finalSum, setFinalSum] = useState<(FinalSummary & { score?: number }) | null>(null);
   const [sumPending, setSumPending] = useState(false);
   const [selectedModel, setSelectedModel] = useState<number | null>(null);
