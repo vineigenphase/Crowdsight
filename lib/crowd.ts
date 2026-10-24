@@ -6,8 +6,8 @@ import { Reaction } from './score';
 
 export type Emit = (event: string, data: unknown) => void;
 
-// Spec default is 12; raised via CROWD_CONCURRENCY to hit the <60s gate on 1,000.
-const limit = pLimit(Number(process.env.CROWD_CONCURRENCY) || 42);
+// Spec default is 12; raised via CROWD_CONCURRENCY to keep 1,000 near the <60s gate without tripping Nebius 503s.
+const limit = pLimit(Number(process.env.CROWD_CONCURRENCY) || 24);
 const BATCH = 25;
 
 const TYPE_LABEL: Record<InputType, string> = { ad: 'Ad / message', price: 'Price change', spec: 'Spec change' };

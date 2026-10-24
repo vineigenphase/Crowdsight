@@ -26,7 +26,7 @@ async function propose(type: InputType, text: string, price: number | null, floo
     };
   }
   const roster = await getRoster();
-  const user = `You optimise a startup's launch. Current input, Launch Score, per-segment scores, top objections and price data are below. Choose ONE lever (message, price or spec) that most raises the weighted score without misrepresenting the product. Write 3 variants of the input that change only that lever. Keep each variant a similar length to the input. If you change the price, state the new price in £ in the variant text. ${floor != null ? `The price must not go below £${floor}/month (30% under the founder's original price); prefer message or spec levers once price is near that floor.` : ''}
+  const user = `You optimise a startup's launch. Current input, Launch Score, per-segment scores, top objections and price data are below. Choose ONE lever (message, price or spec) that most raises the weighted score without misrepresenting the product. Write 3 variants of the input that change only that lever. Keep each variant a similar length to the input. If you change the price, state the new price in £ in the variant text. ${floor != null ? `You may lower the price, but never below £${floor}/month (30% under the founder's original price).` : ''}
 Also cluster the objections into the top 5 themes with counts.
 
 Return JSON {"lever": "message"|"price"|"spec", "reason": string (<=20 words), "objectionThemes": [{"theme": string, "count": number}], "variants": [string, string, string]}
@@ -100,7 +100,12 @@ export async function optimise(
     const best = results.reduce((a, b) => (b.score > a.score ? b : a));
     tried.push(`${proposal.lever}: ${proposal.reason} (sample ${baseline.toFixed(1)} -> best ${best.score.toFixed(1)})`);
 
-    if (!Number.isFinite(best.score) || baseRun.size < sample.length * 0.5 || best.score < baseline + MIN_GAIN) {
+    if (baseRun.size < sample.length * 0.5) {
+      emit('iter_done', { iter, applied: false, baseline, best: best.score });
+      emit('loop_done', { reason: `Nebius unavailable during iteration ${iter} (${baseRun.size}/${sample.length} baseline reactions); stopped.`, score: current });
+      return;
+    }
+    if (!Number.isFinite(best.score) || best.score < baseline + MIN_GAIN) {
       emit('iter_done', { iter, applied: false, baseline, best: best.score });
       emit('loop_done', { reason: `Gain under ${MIN_GAIN} points on iteration ${iter}; stopped.`, score: current });
       return;
