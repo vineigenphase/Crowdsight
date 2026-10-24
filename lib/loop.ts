@@ -7,10 +7,11 @@ import { financials, Reaction, summarise, topObjections } from './score';
 const MAX_ITERS = 3;
 const MIN_GAIN = 2;
 const SAMPLE = 200;
+const MAX_PRICE_CUT = 0.3; // never more than 30% below the founder's original price
 
 export type Proposal = { lever: 'message' | 'price' | 'spec'; reason: string; objectionThemes: { theme: string; count: number }[]; variants: string[] };
 
-async function propose(type: InputType, text: string, price: number | null, personas: Persona[], reactions: Map<string, Reaction>, configs: SegmentConfig[], tried: string[]): Promise<Proposal> {
+async function propose(type: InputType, text: string, price: number | null, floor: number | null, personas: Persona[], reactions: Map<string, Reaction>, configs: SegmentConfig[], tried: string[]): Promise<Proposal> {
   const s = summarise(personas, reactions, configs);
   const rs = [...reactions.values()];
   const fin = financials(rs, price);
@@ -25,7 +26,7 @@ async function propose(type: InputType, text: string, price: number | null, pers
     };
   }
   const roster = await getRoster();
-  const user = `You optimise a startup's launch. Current input, Launch Score, per-segment scores, top objections and price data are below. Choose ONE lever (message, price or spec) that most raises the weighted score without misrepresenting the product. Write 3 variants of the input that change only that lever. Keep each variant a similar length to the input. If you change the price, state the new price in £ in the variant text.
+  const user = `You optimise a startup's launch. Current input, Launch Score, per-segment scores, top objections and price data are below. Choose ONE lever (message, price or spec) that most raises the weighted score without misrepresenting the product. Write 3 variants of the input that change only that lever. Keep each variant a similar length to the input. If you change the price, state the new price in £ in the variant text. ${floor != null ? `The price must not go below £${floor}/month (30% under the founder's original price); prefer message or spec levers once price is near that floor.` : ''}
 Also cluster the objections into the top 5 themes with counts.
 
 Return JSON {"lever": "message"|"price"|"spec", "reason": string (<=20 words), "objectionThemes": [{"theme": string, "count": number}], "variants": [string, string, string]}
@@ -66,33 +67,40 @@ export async function optimise(
   let current = summarise(personas, reactions, configs).launch;
   emit('version', { version: 0, text, price, score: current, lever: null, change: 'Original input' });
   const tried: string[] = [];
+  const floor = price0 != null ? Math.round(price0 * (1 - MAX_PRICE_CUT) * 100) / 100 : null;
 
   for (let iter = 1; iter <= MAX_ITERS; iter++) {
     emit('iter_start', { iter });
     let proposal: Proposal;
     try {
-      proposal = await propose(type, text, price, personas, reactions, configs, tried);
+      proposal = await propose(type, text, price, floor, personas, reactions, configs, tried);
     } catch (e) {
       emit('loop_done', { reason: `Optimiser failed: ${String((e as Error).message).slice(0, 120)}`, score: current });
       return;
     }
     emit('proposal', { iter, ...proposal });
 
-    // Baseline on the same fixed sample, from the reactions we already have (free).
-    const baseline = summarise(sample, reactions, configs).launch;
-    const results = await Promise.all(
-      proposal.variants.map(async (v, i) => {
+    // Fair race: the current input re-runs on the same 200 alongside the variants.
+    const [baseRun, ...results] = await Promise.all([
+      runCrowd(sample, type, text, price, emit, { tag: { phase: 'variant', iter, variant: 'current' } }),
+      ...proposal.variants.map(async (v, i) => {
         const vPrice = proposal.lever === 'price' ? (parsePrice(v) ?? price) : price;
+        if (floor != null && vPrice != null && vPrice < floor) {
+          emit('variant_done', { iter, variant: i, score: null, rejected: `£${vPrice} is below the £${floor} floor`, n: 0 });
+          return { text: v, price: vPrice, score: -Infinity };
+        }
         const rs = await runCrowd(sample, type, v, vPrice, emit, { tag: { phase: 'variant', iter, variant: i } });
         const score = summarise(sample, rs, configs).launch;
-        emit('variant_done', { iter, variant: i, score, baseline, n: rs.size });
+        emit('variant_done', { iter, variant: i, score, n: rs.size });
         return { text: v, price: vPrice, score };
       }),
-    );
+    ]);
+    const baseline = summarise(sample, baseRun, configs).launch;
+    emit('baseline', { iter, baseline, n: baseRun.size });
     const best = results.reduce((a, b) => (b.score > a.score ? b : a));
     tried.push(`${proposal.lever}: ${proposal.reason} (sample ${baseline.toFixed(1)} -> best ${best.score.toFixed(1)})`);
 
-    if (best.score < baseline + MIN_GAIN) {
+    if (!Number.isFinite(best.score) || baseRun.size < sample.length * 0.5 || best.score < baseline + MIN_GAIN) {
       emit('iter_done', { iter, applied: false, baseline, best: best.score });
       emit('loop_done', { reason: `Gain under ${MIN_GAIN} points on iteration ${iter}; stopped.`, score: current });
       return;

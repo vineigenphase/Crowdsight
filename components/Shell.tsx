@@ -68,7 +68,7 @@ export function LoopTimeline({ versions, pending, viewing, onView, note }: { ver
               {pending.variants.map((t, i) => (
                 <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
                   <span className="truncate">{t}</span>
-                  <span className="num shrink-0">{pending.scores[i] != null ? pending.scores[i]!.toFixed(1) : '…'}</span>
+                  <span className="num shrink-0">{pending.scores[i] == null ? '…' : Number.isNaN(pending.scores[i]) ? 'over cut' : pending.scores[i]!.toFixed(1)}</span>
                 </div>
               ))}
               {pending.baseline != null && <div className="flex justify-between text-[11px] text-[var(--dim)]"><span>current, same 200</span><span className="num">{pending.baseline.toFixed(1)}</span></div>}

@@ -165,7 +165,10 @@ export default function Home() {
             if (data.objectionThemes?.length) setThemes(data.objectionThemes);
             break;
           case 'variant_done':
-            setPending((p) => (p ? { ...p, baseline: data.baseline, scores: p.scores.map((s, i) => (i === data.variant ? data.score : s)) } : p));
+            setPending((p) => (p ? { ...p, scores: p.scores.map((s, i) => (i === data.variant ? (data.rejected ? NaN : data.score) : s)) } : p));
+            break;
+          case 'baseline':
+            setPending((p) => (p ? { ...p, baseline: data.baseline } : p));
             break;
           case 'apply':
             setPending((p) => (p ? { ...p, applied: true } : p));
