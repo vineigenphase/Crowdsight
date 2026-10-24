@@ -19,16 +19,17 @@ function card(p: Persona): string {
   return `${p.id} | ${p.name}, ${p.age}, ${p.region}, ${p.incomeBand} income | role: ${p.role} | stake: ${p.stake} | personality: ${p.personality}`;
 }
 
-function prompt(personas: Persona[], type: InputType, text: string, price: number | null): string {
-  return `Simulate these ${personas.length} people independently. Each is defined by their card. React to the startup input as that person would in real life, given their role, personality and stake. Do not average or agree with each other: skeptics should be skeptical, price-sensitive people should balk at high prices, low-income people should give lower maxPrice. Use the full range of stance from -1 to 1.
+function prompt(personas: Persona[], type: InputType, text: string, price: number | null, brief?: string): string {
+  return `Simulate these ${personas.length} people independently. Each is defined by their card. React to the startup input as that person would in real life, given their role, personality and stake. Do not average or agree with each other: skeptics should be skeptical, price-sensitive people should balk at high prices, low-income people should give lower maxPrice. Use the full range of stance from -1 to 1. Compare against the real alternatives when relevant.
 
 Return a JSON object {"reactions": [...]} with exactly one object per person, matching:
-{"personaId": string, "stance": number -1..1, "quote": string (<=20 words, first person, in their voice), "intent": number 0..1 (would buy / try / back it), "wouldShare": number 0..1, "objection": string <=12 words or null, "maxPrice": number GBP/month they would pay, or null if not applicable}
+{"personaId": string, "stance": number -1..1, "quote": string (<=20 words, first person, in their voice), "intent": number 0..1 (would buy / try / back it), "wouldShare": number 0..1, "objection": string <=12 words or null, "maxPrice": number GBP/month they would pay, or null if not applicable, "comparedTo": name of a real alternative they compared it with, or null}
 
 PEOPLE:
 ${personas.map(card).join('\n')}
 
-INPUT (${TYPE_LABEL[type]}): ${text}
+${brief ? `THEY LIVE IN THIS MARKET: ${brief}
+` : ''}INPUT (${TYPE_LABEL[type]}): ${text}
 FOUNDER'S PRICE: ${price != null ? `£${price}/month` : 'none'}`;
 }
 
@@ -63,6 +64,7 @@ function normalise(raw: unknown, personas: Persona[], model: string): Reaction[]
       wouldShare: clamp(r.wouldShare, 0, 1, 0),
       objection: r.objection ? String(r.objection).slice(0, 100) : null,
       maxPrice: mp == null || Number.isNaN(mp) ? null : mp,
+      comparedTo: r.comparedTo ? String(r.comparedTo).slice(0, 60) : null,
       model,
     });
   });
@@ -87,12 +89,13 @@ function mockReactions(personas: Persona[], text: string, price: number | null, 
       wouldShare: Math.max(0, Math.min(1, (stance + 0.5) / 2 + (r() - 0.5) * 0.3)),
       objection: stance < 0.2 ? ['Too expensive for what it is', 'Not sure it is different', 'Worried about cancelling'][Math.floor(r() * 3)] : null,
       maxPrice,
+      comparedTo: stance < 0 ? 'Competitor X' : null,
       model,
     };
   });
 }
 
-export type CrowdOpts = { mono?: boolean; tag?: Record<string, unknown> };
+export type CrowdOpts = { mono?: boolean; tag?: Record<string, unknown>; brief?: string };
 
 /** Runs a crowd. Batches never mix models; failed batches are dropped, not fatal. */
 export async function runCrowd(
@@ -135,7 +138,7 @@ export async function runCrowd(
             reactions = mockReactions(b.personas, text, price, opts.mono ? 0 : b.idx, b.model);
             ms = Date.now() - t;
           } else {
-            const res = await chatJSON(b.model, SYSTEM, prompt(b.personas, type, text, price));
+            const res = await chatJSON(b.model, SYSTEM, prompt(b.personas, type, text, price, opts.brief));
             reactions = normalise(res.data, b.personas, b.model);
             ms = res.ms;
             tokens = res.tokens;

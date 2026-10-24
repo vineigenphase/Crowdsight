@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { meter } from './nebius';
 
-export type DemoEvent = { t: number; stream: 'crowd' | 'optimise'; event: string; data: unknown };
+export type DemoEvent = { t: number; stream: 'crowd' | 'optimise' | 'ground'; event: string; data: unknown };
 
 /** Wraps a job in an SSE response. Every event also carries the running cost meter. */
 export function sse(job: (emit: (event: string, data: unknown) => void) => Promise<void>): Response {
@@ -32,7 +32,7 @@ export function sse(job: (emit: (event: string, data: unknown) => void) => Promi
 }
 
 /** Replays the recorded demo through the same SSE events, at recorded timing. */
-export function replay(stream: 'crowd' | 'optimise', mono = false): Response {
+export function replay(stream: 'crowd' | 'optimise' | 'ground', mono = false): Response {
   return sse(async (emit) => {
     const file = path.join(process.cwd(), 'public', 'demo', 'run.json');
     const log = JSON.parse(fs.readFileSync(file, 'utf8')) as { events: DemoEvent[] };

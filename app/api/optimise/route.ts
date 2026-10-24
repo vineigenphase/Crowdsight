@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 800;
 
-type Body = { type: InputType; text: string; price: number | null; configs: SegmentConfig[]; seed: number; n: number; reactions?: Reaction[]; demo?: boolean };
+type Body = { type: InputType; text: string; price: number | null; configs: SegmentConfig[]; seed: number; n: number; reactions?: Reaction[]; demo?: boolean; brief?: string };
 
 export async function POST(req: Request) {
   const b = (await req.json()) as Body;
@@ -18,6 +18,6 @@ export async function POST(req: Request) {
     const personas = samplePersonas(b.configs, b.n, b.seed, roster.crowd.length);
     const prior = b.reactions?.length ? new Map(b.reactions.map((r) => [r.personaId, r])) : null;
     emit('loop_start', { n: personas.length, strong: roster.strong });
-    await optimise(b.type, b.text, b.price, personas, b.configs, prior, emit);
+    await optimise(b.type, b.text, b.price, personas, b.configs, prior, emit, b.brief);
   });
 }

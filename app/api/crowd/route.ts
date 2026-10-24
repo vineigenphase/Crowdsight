@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-type Body = { type: InputType; text: string; price: number | null; configs: SegmentConfig[]; seed: number; n: number; mono?: boolean; demo?: boolean };
+type Body = { type: InputType; text: string; price: number | null; configs: SegmentConfig[]; seed: number; n: number; mono?: boolean; demo?: boolean; brief?: string };
 
 export async function POST(req: Request) {
   const b = (await req.json()) as Body;
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const personas = samplePersonas(b.configs, b.n, b.seed, roster.crowd.length);
     const t = Date.now();
     emit('run_start', { n: personas.length, mono: !!b.mono, models: b.mono ? [roster.mono] : roster.crowd });
-    const reactions = await runCrowd(personas, b.type, b.text, b.price, emit, { mono: b.mono, tag: { phase: 'run' } });
+    const reactions = await runCrowd(personas, b.type, b.text, b.price, emit, { mono: b.mono, brief: b.brief, tag: { phase: 'run' } });
     emit('run_done', { ms: Date.now() - t, summary: summarise(personas, reactions, b.configs), meter });
   });
 }

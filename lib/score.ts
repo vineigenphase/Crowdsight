@@ -9,6 +9,7 @@ export type Reaction = {
   wouldShare: number;
   objection: string | null;
   maxPrice: number | null;
+  comparedTo?: string | null;
   model?: string;
 };
 

@@ -9,10 +9,11 @@ import { streamSSE } from '@/lib/client';
 import { defaultConfigs, InputType, parsePrice, samplePersonas, SegmentConfig, splitSentences } from '@/lib/personas';
 import { diversity, financials, Reaction, summarise } from '@/lib/score';
 import { Transcript } from '@/components/Transcript';
+import { FeedRow, Favicons, LiveFeed } from '@/components/LiveFeed';
 
 const N = 1000;
 const SEED = 7;
-const TABS = ['Crowd', 'Segments', 'Marketing', 'Product', 'Financials'] as const;
+const TABS = ['Crowd', 'Feed', 'Segments', 'Marketing', 'Product', 'Financials'] as const;
 type Tab = (typeof TABS)[number];
 
 const EXAMPLES: Record<InputType, string> = {
@@ -21,7 +22,9 @@ const EXAMPLES: Record<InputType, string> = {
   spec: 'Removing the free tier. Adding team seats so companies can buy Loop for staff, with one invoice and usage reports.',
 };
 
-type LogEvent = { t: number; stream: 'crowd' | 'optimise'; event: string; data: unknown };
+type LogEvent = { t: number; stream: 'crowd' | 'optimise' | 'ground'; event: string; data: unknown };
+type Brief = { competitors: { name: string; price: string | null; url: string }[]; painPoints: string[]; trends: string[]; sources: { title: string; url: string }[] };
+const FEED_EVENTS = new Set(['ground_source', 'brief', 'batch_done', 'batch_failed', 'proposal', 'variant_done', 'baseline', 'apply', 'version', 'run_done', 'loop_done']);
 
 export default function Home() {
   const [demo, setDemo] = useState(false);
@@ -37,6 +40,11 @@ export default function Home() {
   const [mono, setMono] = useState(false);
   const [ver, setVer] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [category, setCategory] = useState('pay-per-visit gyms, London');
+  const [brief, setBrief] = useState<Brief | null>(null);
+  const briefFor = useRef<string | null>(null);
+  const [feed, setFeed] = useState<FeedRow[]>([]);
+  const [briefOpen, setBriefOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useState<number | null>(null);
   const modelStats = useRef(new Map<string, ModelStat>());
   const [versions, setVersions] = useState<Version[]>([]);
@@ -97,9 +105,25 @@ export default function Home() {
     if (p != null) setPrice(p);
   };
 
-  const record = (stream: 'crowd' | 'optimise', event: string, data: unknown) => {
+  const record = (stream: 'crowd' | 'optimise' | 'ground', event: string, data: unknown) => {
     if (!demo) log.current.events.push({ t: Math.round(performance.now()), stream, event, data });
+    if (FEED_EVENTS.has(event)) setFeed((f) => [...f, { t: Date.now(), event, data }].slice(-300));
   };
+  const briefStr = (b: Brief | null) => b ? `Competitors: ${b.competitors.map((c) => `${c.name}${c.price ? ` (${c.price})` : ''}`).join(', ') || 'unknown'}. Known pain points: ${b.painPoints.join('; ')}. Trends: ${b.trends.join('; ')}.` : undefined;
+
+  async function groundIfNeeded(): Promise<Brief | null> {
+    if (!category.trim() || (briefFor.current === category && brief)) return brief;
+    let got: Brief | null = null;
+    setTab('Feed');
+    try {
+      await streamSSE('/api/ground', { category, demo }, (event, data) => {
+        record('ground', event, data);
+        if (event === 'brief') got = data;
+      });
+    } catch (e) { setError('Tavily: ' + String((e as Error).message)); }
+    if (got) { setBrief(got); briefFor.current = category; }
+    return got;
+  }
 
   const handleCrowdEvent = (target: Map<string, Reaction>, event: string, data: any) => {
     if (event === 'meter') setMeter({ calls: data.calls, tokens: data.promptTokens + data.completionTokens });
@@ -129,6 +153,7 @@ export default function Home() {
     setStage('Crowd');
     setSelected(null);
     if (!log.current.events.length) log.current.state = { type, text, price, configs };
+    const b = await groundIfNeeded();
     const target = asMono ? monoRef.current : mixedRef.current;
     target.clear();
     modelStats.current.clear();
@@ -136,7 +161,7 @@ export default function Home() {
     net.current?.reset();
     bump();
     try {
-      await streamSSE('/api/crowd', body({ mono: asMono }), (event, data) => {
+      await streamSSE('/api/crowd', body({ mono: asMono, brief: briefStr(b) }), (event, data) => {
         record('crowd', event, data);
         handleCrowdEvent(target, event, data);
       });
@@ -144,6 +169,7 @@ export default function Home() {
       setError(String((e as Error).message));
     }
     if (!asMono) versionReactions.current.set(0, new Map(mixedRef.current));
+    setTab('Crowd');
     setRunning(false);
     bump();
   }
@@ -161,7 +187,8 @@ export default function Home() {
     const startText = text;
     let confirmMap = new Map<string, Reaction>();
     try {
-      await streamSSE('/api/optimise', body({ reactions: demo ? undefined : [...mixedRef.current.values()] }), (event, data) => {
+      setTab('Feed');
+      await streamSSE('/api/optimise', body({ brief: briefStr(brief), reactions: demo ? undefined : [...mixedRef.current.values()] }), (event, data) => {
         record('optimise', event, data);
         if (data?.phase === 'confirm' && event === 'batch_done') {
           for (const r of data.reactions as Reaction[]) confirmMap.set(r.personaId, r);
@@ -277,6 +304,7 @@ export default function Home() {
     if (micOn) toggleMic();
     mixedRef.current.clear(); monoRef.current.clear(); net.current?.reset();
     log.current = { state: null, events: [] };
+    setFeed([]);
     setVersions([]); setPending(null); setStage('Input'); setMono(false); setNote(null); setSelected(null); bump();
   };
 
@@ -286,6 +314,7 @@ export default function Home() {
     return () => clearInterval(t);
   }, [micOn]);
 
+  const personaById = useMemo(() => new Map(personas.map((p) => [p.id, p])), [personas]);
   const display = mono ? monoRef.current : mixedRef.current;
   const sel = selected ? personas.find((p) => p.id === selected) : null;
   const hasRun = summary.n > 0;
@@ -303,6 +332,7 @@ export default function Home() {
               </button>
             ))}
             <div className="ml-auto flex items-center gap-4 text-[12px] text-[var(--dim)]">
+              <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. pay-per-visit gyms, London" className="field w-[210px] py-0.5" title="Market category, searched with Tavily" />
               <span className="flex items-center gap-1.5">
                 Price £
                 <input type="number" value={price ?? ''} onChange={(e) => setPrice(e.target.value === '' ? null : +e.target.value)} className="field num w-14 py-0.5" />/mo
@@ -325,6 +355,21 @@ export default function Home() {
               placeholder={type === 'ad' ? 'Paste your ad, launch post or landing copy…' : type === 'price' ? '£9/mo → £14/mo, plus what changes' : 'What changes in the product'}
             />
           </div>
+          {brief && (
+            <div className="border-t border-[var(--line)] px-5 py-3">
+              <button onClick={() => setBriefOpen((o) => !o)} className="flex w-full items-center gap-2 text-[12px] text-[var(--dim)]">
+                <span className="rounded-full px-2 py-[1px] text-[10px]" style={{ color: 'var(--tavily)', background: 'rgba(94,234,212,.12)' }}>Market brief</span>
+                <Favicons urls={brief.sources.map((s) => s.url)} /><span>{brief.sources.length} sources via Tavily</span>
+                <span className="ml-auto">{briefOpen ? 'Hide' : 'Show'}</span>
+              </button>
+              {briefOpen && (
+                <div className="mt-2 space-y-1.5 text-[12px]">
+                  <div className="flex flex-wrap gap-1">{brief.competitors.map((c, i) => <span key={i} className="rounded border border-[var(--line)] px-1.5 py-0.5">{c.name}{c.price ? <span className="num text-[var(--dim)]"> {c.price}</span> : null}</span>)}</div>
+                  <div className="text-[var(--dim)]">{brief.painPoints.slice(0, 3).join(' · ')}</div>
+                </div>
+              )}
+            </div>
+          )}
           <LoopTimeline versions={versions} pending={pending} viewing={viewing} onView={viewVersion} note={note} />
           {error && <div className="border-t border-[var(--line)] px-4 py-2 text-[12px] text-[var(--neg)]">{error}</div>}
         </section>
@@ -352,6 +397,7 @@ export default function Home() {
               })()}
               {sel && <PersonaCard p={sel} r={display.get(sel.id)} model={display.get(sel.id)?.model} onClose={() => setSelected(null)} />}
             </div>
+            {tab === 'Feed' && <LiveFeed rows={feed} personas={personaById} families={status?.families ?? []} />}
             {tab === 'Segments' && <SegmentTabs configs={configs} onChange={changeConfigs} scores={summary.segments} />}
             {tab === 'Marketing' && <MarketingLens personas={personas} reactions={mixedRef.current} segments={summary.segments} />}
             {tab === 'Product' && <ProductLens personas={personas} reactions={mixedRef.current} segments={summary.segments} themes={themes} />}

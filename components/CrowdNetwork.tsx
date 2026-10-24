@@ -1,6 +1,7 @@
 'use client';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { stanceColor } from '@/lib/client';
+import { MODEL_COLORS } from '@/lib/colors';
 import { Persona, Segment, SEGMENTS, SEGMENT_LABEL } from '@/lib/personas';
 import { Reaction } from '@/lib/score';
 
@@ -172,10 +173,12 @@ export const CrowdNetwork = forwardRef<NetworkHandle, Props>(function CrowdNetwo
       ctx.lineWidth = 1;
       for (let mi = 0; mi < 6; mi++) {
         const a = 0.06 + s.inputEdge[mi] * 0.5 + (s.inflight[mi] || (mi === 0 ? s.inflight[6] : 0) ? 0.12 : 0);
-        ctx.strokeStyle = `rgba(233,233,234,${a * (mi > 0 ? 1 - s.monoT : 1)})`;
+        ctx.globalAlpha = Math.min(1, a * 1.4) * (mi > 0 ? 1 - s.monoT : 1);
+        ctx.strokeStyle = s.inputEdge[mi] > 0.05 ? MODEL_COLORS[mi] : 'rgb(233,233,234)';
         ctx.beginPath();
         for (let i = 0; i < Math.max(1, sentences.length); i++) { ctx.moveTo(xIn, inY(i)); ctx.lineTo(xM, mY(mi)); }
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
       // models → segments
       for (let mi = 0; mi < 6; mi++) for (let si = 0; si < 5; si++) {
@@ -229,7 +232,7 @@ export const CrowdNetwork = forwardRef<NetworkHandle, Props>(function CrowdNetwo
         s.modelPos[mi] = { x: xM, y: mY(mi) };
         const busy = s.inflight[mi] > 0 || (mi === 0 && s.inflight[6] > 0);
         if (p.selectedModel === mi) { ctx.strokeStyle = '#EDEDED'; ctx.beginPath(); ctx.arc(xM, mY(mi), 10, 0, Math.PI * 2); ctx.stroke(); }
-        node(ctx, xM, mY(mi), 5, 0.35 + s.modelGlow[mi] * 0.65, busy);
+        node(ctx, xM, mY(mi), 5.5, 0.45 + s.modelGlow[mi] * 0.55, busy, MODEL_COLORS[mi]);
         const label = p.mono && mi === 0 ? 'mono · ' + (p.families[0] ?? '') : (p.families[mi] ?? `model ${mi + 1}`);
         tag(ctx, label, xM, mY(mi) - 14, 'center', mi > 0 ? 1 - s.monoT : 1);
       }
@@ -284,8 +287,10 @@ function tag(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, 
   ctx.fillText(text, x, y);
 }
 
-function node(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, a: number, ring = false) {
-  ctx.fillStyle = `rgba(233,233,234,${a})`;
+function node(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, a: number, ring = false, color?: string) {
+  ctx.globalAlpha = color ? a : 1;
+  ctx.fillStyle = color ?? `rgba(233,233,234,${a})`;
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
   if (ring) { ctx.strokeStyle = 'rgba(233,233,234,.35)'; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); }
 }

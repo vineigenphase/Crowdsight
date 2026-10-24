@@ -59,11 +59,12 @@ export async function optimise(
   configs: SegmentConfig[],
   reactions0: Map<string, Reaction> | null,
   emit: Emit,
+  brief?: string,
 ) {
   const sample = stratifiedSample(personas, SAMPLE);
   let text = text0;
   let price = price0;
-  let reactions = reactions0 && reactions0.size > personas.length * 0.5 ? reactions0 : await runCrowd(personas, type, text, price, emit, { tag: { phase: 'confirm', iter: 0 } });
+  let reactions = reactions0 && reactions0.size > personas.length * 0.5 ? reactions0 : await runCrowd(personas, type, text, price, emit, { brief, tag: { phase: 'confirm', iter: 0 } });
   let current = summarise(personas, reactions, configs).launch;
   emit('version', { version: 0, text, price, score: current, lever: null, change: 'Original input' });
   const tried: string[] = [];
@@ -82,14 +83,14 @@ export async function optimise(
 
     // Fair race: the current input re-runs on the same 200 alongside the variants.
     const [baseRun, ...results] = await Promise.all([
-      runCrowd(sample, type, text, price, emit, { tag: { phase: 'variant', iter, variant: 'current' } }),
+      runCrowd(sample, type, text, price, emit, { brief, tag: { phase: 'variant', iter, variant: 'current' } }),
       ...proposal.variants.map(async (v, i) => {
         const vPrice = proposal.lever === 'price' ? (parsePrice(v) ?? price) : price;
         if (floor != null && vPrice != null && vPrice < floor) {
           emit('variant_done', { iter, variant: i, score: null, rejected: `£${vPrice} is below the £${floor} floor`, n: 0 });
           return { text: v, price: vPrice, score: -Infinity };
         }
-        const rs = await runCrowd(sample, type, v, vPrice, emit, { tag: { phase: 'variant', iter, variant: i } });
+        const rs = await runCrowd(sample, type, v, vPrice, emit, { brief, tag: { phase: 'variant', iter, variant: i } });
         const score = summarise(sample, rs, configs).launch;
         emit('variant_done', { iter, variant: i, score, n: rs.size });
         return { text: v, price: vPrice, score };
@@ -115,7 +116,7 @@ export async function optimise(
     text = best.text;
     price = best.price;
     emit('apply', { iter, text, price, sampleScore: best.score });
-    const confirmRun = await runCrowd(personas, type, text, price, emit, { tag: { phase: 'confirm', iter } });
+    const confirmRun = await runCrowd(personas, type, text, price, emit, { brief, tag: { phase: 'confirm', iter } });
     if (confirmRun.size < personas.length * 0.5) {
       // Provider trouble: keep the sample result, mark it unconfirmed, and stop rather than record a false score.
       emit('version', { version: iter, text, price, score: best.score, lever: proposal.lever, change: `${proposal.reason} (sample score; full confirm incomplete)` });

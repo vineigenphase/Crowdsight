@@ -2,10 +2,13 @@
 
 :root {
   --bg: #0A0A0B;
-  --panel: #0F0F11;
-  --panel2: #151518;
-  --line: rgba(255, 255, 255, .07);
-  --line2: rgba(255, 255, 255, .16);
+  --panel: #0E0E11;
+  --panel2: #16161B;
+  --line: rgba(255, 255, 255, .06);
+  --line2: rgba(255, 255, 255, .14);
+  --m1: #8B7CFF; --m2: #4FA3FF; --m3: #2DD4BF; --m4: #F5B451; --m5: #FF7AB6; --m6: #A3E635;
+  --tavily: #5EEAD4;
+  --brand: #8B7CFF;
   --text: #EDEDED;
   --dim: #8A8A8F;
   --neg: #FF5A4E;
@@ -40,8 +43,9 @@ body {
 .btn:hover { background: var(--panel2); border-color: var(--line2); }
 .btn:disabled { opacity: .4; pointer-events: none; }
 .btn-on { border-color: var(--pos); color: var(--pos); }
-.btn-primary { background: var(--accent); color: #0A0A0B; border-color: var(--accent); font-weight: 500; }
-.btn-primary:hover { background: #fff; }
+.btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); font-weight: 500; }
+.btn-primary:hover { background: #9d90ff; }
+.card { border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); }
 select.btn option { background: var(--panel); }
 
 .field {
