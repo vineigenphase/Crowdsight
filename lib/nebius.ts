@@ -83,7 +83,7 @@ export async function chatJSON(
   model: string,
   system: string,
   user: string,
-  opts: { maxTokens?: number; temperature?: number; retries?: number } = {},
+  opts: { maxTokens?: number; temperature?: number; retries?: number; timeoutMs?: number } = {},
 ): Promise<{ data: unknown; ms: number; tokens: number }> {
   const retries = opts.retries ?? 2;
   let lastErr: unknown;
@@ -100,7 +100,7 @@ export async function chatJSON(
         temperature: opts.temperature ?? 0.9,
         max_tokens: opts.maxTokens ?? 9000,
         ...(noJsonMode.has(model) ? {} : { response_format: { type: 'json_object' as const } }),
-      });
+      }, opts.timeoutMs ? { timeout: opts.timeoutMs } : undefined);
       const text = res.choices[0]?.message?.content ?? '';
       if (!text.trim()) throw Object.assign(new Error(`empty content (finish: ${res.choices[0]?.finish_reason})`), { status: 0 });
       meter.promptTokens += res.usage?.prompt_tokens ?? 0;

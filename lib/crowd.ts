@@ -138,7 +138,8 @@ export async function runCrowd(
             reactions = mockReactions(b.personas, text, price, opts.mono ? 0 : b.idx, b.model);
             ms = Date.now() - t;
           } else {
-            const res = await chatJSON(b.model, SYSTEM, prompt(b.personas, type, text, price, opts.brief));
+            // A stuck batch is dropped after one retry rather than holding the whole run.
+            const res = await chatJSON(b.model, SYSTEM, prompt(b.personas, type, text, price, opts.brief), { retries: 1, timeoutMs: 60_000 });
             reactions = normalise(res.data, b.personas, b.model);
             ms = res.ms;
             tokens = res.tokens;
