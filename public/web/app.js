@@ -83,6 +83,11 @@ function buildPersonas(c){
 function shiftOf(c){ return c.applied.reduce((a, x) => a + x.shift, 0); }
 function priceOf(c){ const p = c.applied.filter(x => x.price != null).pop(); return p ? p.price : c.price; }
 function react(c, p, extra = 0){
+  if (c.live) { const r = c.live.get(p.id), price = priceOf(c) ?? 0;
+    if (!r) return {st:0, intent:0, share:0, maxPrice:0, clicked:false, bought:false, quote:'', objection:null, pending:true};
+    const st = clamp(+r.stance || 0, -1, 1), intent = clamp(+r.intent || 0, 0, 1), share = clamp(+r.wouldShare || 0, 0, 1), maxPrice = r.maxPrice == null ? 0 : +r.maxPrice;
+    const clicked = share*.6 + Math.max(0, st)*.4 > .42, bought = clicked && intent > .55 && (!price || maxPrice >= price);
+    return {st, intent, share, maxPrice, clicked, bought, quote: r.quote || '', objection: r.objection || null, comparedTo: r.comparedTo || null, model: r.model}; }
   const s = SEGS.find(x => x.id === p.seg), m = MODELS[p.model], sh = shiftOf(c) + extra, price = priceOf(c) ?? 0, cut = c.price && price < c.price;
   const st = clamp(s.base + m.bias + p.n1*.58 + sh*s.sens + (p.pers === 'price-sensitive' ? (cut ? .14 : -.1) : 0), -1, 1);
   const intent = clamp((st+1)/2*.92 + p.n2*.14, 0, 1), share = clamp((st+.55)/2 + p.n3*.14, 0, 1);
@@ -95,7 +100,7 @@ function react(c, p, extra = 0){
   return {st, intent, share, maxPrice, clicked, bought, quote: pool[Math.floor(p.q * pool.length)], objection: st < .15 ? OBJ[Math.floor(p.o * 5)] : null};
 }
 function summarise(c, extra = 0){
-  const all = c.personas.map(p => ({p, r: react(c, p, extra)})), price = priceOf(c);
+  const all = c.personas.map(p => ({p, r: react(c, p, extra)})).filter(x => !x.r.pending), price = priceOf(c);
   const segs = SEGS.map(s => { const rs = all.filter(x => x.p.seg === s.id).map(x => x.r), n = rs.length || 1;
     const sc = 100 * (.5*rs.reduce((a,r)=>a+(r.st+1)/2,0)/n + .35*rs.reduce((a,r)=>a+r.intent,0)/n + .15*rs.reduce((a,r)=>a+r.share,0)/n);
     const objs = {}; rs.forEach(r => { if (r.objection) objs[r.objection] = (objs[r.objection]||0) + 1; });
@@ -119,6 +124,39 @@ function adviceFor(c){
   if (c.mode === 'launch') list.push({id:'a5', lever:'spec', title:'Add a 4-visit starter tier', why:'Domain experts doubt the unit economics; a smaller tier lowers the risk of trying it.', shift:.06});
   if (c.mode === 'general' || c.mode === 'pricing') list.push({id:'a6', lever:'spec', title:'Say what happens after 8 visits', why:'"Unclear what happens on visit 9" appears in 1 in 8 objections.', shift:.04});
   return list;
+}
+
+/* ---------------- Live backend (Nebius + Tavily via the Next.js API) ---------------- */
+let LIVE = null;
+async function isLive(){ if (LIVE !== null) return LIVE; try { const r = await fetch('/api/status', {cache:'no-store'}); const j = await r.json(); LIVE = !!j.ok && !j.mock; } catch { LIVE = false; } return LIVE; }
+const TYPE = {general:'ad', ads:'ad', pricing:'price', launch:'spec'};
+async function sse(url, body, on){
+  const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+  const rd = res.body.getReader(), dec = new TextDecoder(); let buf = '';
+  for (;;) { const {value, done} = await rd.read(); if (done) break; buf += dec.decode(value, {stream:true});
+    let i; while ((i = buf.indexOf('\n\n')) >= 0) { const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const ev = /^event: (.*)$/m.exec(chunk)?.[1], data = /^data: (.*)$/m.exec(chunk)?.[1]; if (ev && data) { let d; try { d = JSON.parse(data); } catch { continue; } on(ev, d); } } }
+}
+async function post(url, body){ const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); return r.json(); }
+const briefText = b => b ? `Competitors: ${(b.competitors||[]).map(x => `${x.name}${x.price ? ` (${x.price})` : ''}`).join(', ') || 'unknown'}. Known pain points: ${(b.painPoints||[]).join('; ')}. Trends: ${(b.trends||[]).join('; ')}.` : '';
+function mapPersonas(list){ return list.map((p, i) => ({id:p.id, i, seg:p.segment, name:p.name, age:p.age, role:p.role, stake:(p.stake||'').replace('_',' '), pers:(p.personality||'').replace('_',' '), inc:p.incomeBand, model:p.model})); }
+async function runCrowdLive(c, text, onBatch){
+  const live = new Map(); let done = 0;
+  await sse('/api/crowd', {type: TYPE[c.mode], text, price: c.price, shares: c.shares, brief: c.briefTxt}, (ev, d) => {
+    if (ev === 'batch_done') { (d.reactions || []).forEach(r => live.set(r.personaId, r)); done++; onBatch?.(done, live.size, d.model, live); }
+  });
+  return live;
+}
+function contextFor(c){
+  const S = summarise(c); const o = {}; S.all.forEach(x => { if (x.r.objection) o[x.r.objection] = (o[x.r.objection]||0) + 1; });
+  return `MODE: ${MODES[c.mode].label}\nPITCH: ${c.text}\nPRICE: ${S.price ? '£' + S.price + '/mo' : 'none'}\nMARKET: ${c.briefTxt || 'n/a'}\nLAUNCH SCORE: ${S.launch.toFixed(1)}\nFOR ${pct(S.pos)} AGAINST ${pct(S.neg)} CLICKED ${pct(S.ctr)} BOUGHT ${pct(S.buy)} WOULD PAY ${pct(S.pay)}\nSEGMENTS: ${S.segs.map(x => `${x.s.label} score ${x.score.toFixed(1)}, for ${pct(x.pos)}, against ${pct(x.neg)}, median max £${x.med}, top objection: ${x.obj}`).join(' | ')}\nTOP OBJECTIONS: ${Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n]) => `${k} (${n})`).join('; ')}\nSAMPLE QUOTES: ${S.all.filter((_, i) => i % 25 === 0).map(x => `"${x.r.quote}"`).join(' ')}${(c.refs||[]).length ? `\nREFERENCED CHATS: ${c.refs.map(r => { const rc = chats.find(x => x.id === r.id); return rc ? `${rc.title} (pitch: ${rc.text})` : r.name; }).join('; ')}` : ''}`;
+}
+async function liveAdvice(c){
+  const q = `Suggest exactly 3 concrete changes to this pitch that would most raise the weighted Launch Score. Output exactly 3 lines, each formatted as: LEVER | short title | one-sentence reason citing the data. LEVER is one of message, price, spec, channel. No other text.`;
+  const r = await post('/api/ask', {question: q, context: contextFor(c), history: []});
+  const lines = String(r.reply || '').split('\n').map(l => l.replace(/^\s*[\d\-\*\.\)]+\s*/, '').trim()).filter(l => l.includes('|'));
+  return lines.slice(0, 3).map((l, i) => { const [lever, title, why] = l.split('|').map(x => x.trim()); return {id:'L' + i, lever:(lever||'message').toLowerCase(), title: title || l, why: why || ''}; });
 }
 
 /* ---------------- Rendering: chat column ---------------- */
@@ -166,7 +204,19 @@ $('#modeBtn').addEventListener('click', () => { const m = $('#modeMenu'); m.hidd
 $('#modeMenu').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; setDraftMode(b.dataset.m); $('#modeMenu').hidden = true; });
 function setDraftMode(m){
   draftMode = m; draftShares = {...MODES[m].shares}; $('#modeLabel').textContent = MODES[m].label; $('#heroTitle').textContent = MODES[m].title;
-  $('#inp').value = MODES[m].text; autosize(); renderPop();
+  $('#inp').value = ''; $('#inp').placeholder = PH[m]; autosize(); renderPop(); renderExamples();
+}
+const PH = {general:'Describe your product or paste your landing copy…', ads:'Paste your ad copy, launch post or tweet…', pricing:'Describe the price change, e.g. £9/mo → £14/mo and what changes…', launch:'Describe the new product or feature you are launching…'};
+const EX = {
+  general:[['Gym, pay per visit', MODES.general.text], ['AI note-taker for students', 'Scribe: an AI note-taker that turns any lecture recording into revision notes and flashcards. £6/mo for students.'], ['B2B scheduling', 'Shiftly lets restaurant managers build the weekly rota in 5 minutes. Staff swap shifts in the app. £49/mo per site.']],
+  ads:[['Gym ad', MODES.ads.text], ['Coffee subscription', 'Fresh beans from small roasters, delivered every two weeks. First bag free, then £11. Skip or cancel anytime.'], ['Fintech app', 'Round up every card payment and invest the change. Most users save £400 in their first year. Free for 3 months.']],
+  pricing:[['Gym £9 → £14', MODES.pricing.text], ['SaaS free tier removal', 'We are removing the free tier of Notely. The Starter plan is now £5/mo and includes unlimited notes and sync.'], ['Streaming price rise', 'Our streaming plan goes from £8.99/mo to £10.99/mo next month, adding 4K and two extra screens.']],
+  launch:[['Gym for teams', MODES.launch.text], ['Dog-walking app', 'Pawpal: book a vetted local dog walker in under a minute. Live GPS for every walk. £14 per walk.'], ['E-bike rental', 'Glide: monthly e-bike rental for London commuters. £59/mo, includes servicing, theft cover and a lock.']],
+};
+function renderExamples(){
+  const el = $('#examples'); if (!el) return;
+  el.innerHTML = EX[draftMode].map(([t], i) => `<button type="button" data-i="${i}">${esc(t)}</button>`).join('');
+  $$('#examples button').forEach(b => b.onclick = () => { const [, txt] = EX[draftMode][+b.dataset.i]; $('#inp').value = txt; const pm = /£\s?(\d+(?:\.\d+)?)/g; let m, last = null; while ((m = pm.exec(txt))) last = m[1]; if (last) $('#price').value = last; autosize(); $('#inp').focus(); });
 }
 function renderPop(){
   $('#popBar').innerHTML = SEGS.map(s => `<i style="width:${draftShares[s.id]}%;background:${s.c}"></i>`).join('');
@@ -220,7 +270,7 @@ function startDraft(){
 function openChat(id){
   const c = chats.find(x => x.id === id); if (!c) return;
   if (!c.started) { active = c; return startDraft(); }
-  active = c; const ws = $('#ws'); ws.classList.remove('p1'); ws.classList.add('p2', 'col'); ws.classList.toggle('np', !c.selSeg);
+  active = c; const ws = $('#ws'); ws.classList.remove('p1', 'drawer'); ws.classList.add('p2', 'col'); setView('chat'); ws.classList.toggle('np', !c.selSeg);
   $('#modeTag').textContent = MODES[c.mode].label; $('#priceField').hidden = true; $('#inp').placeholder = 'Ask a follow-up or paste a new version…';
   renderThread(); renderSummary(); renderAdvice(); renderPersona(); renderChats();
 }
@@ -231,13 +281,17 @@ $('#composer').addEventListener('submit', async e => {
   const attach = chips.slice(); chips = []; renderChips(); $('#inp').value = ''; autosize();
   if (!active || !active.started) {
     const c = active && !active.started ? active : newChatObj(draftMode);
-    c.mode = draftMode; c.shares = {...draftShares}; c.started = true; c.text = text; c.price = +$('#price').value || (+(/£\s?(\d+)/.exec(text)?.[1]) || null);
+    c.mode = draftMode; c.shares = {...draftShares}; c.started = true; c.text = text; c.price = (() => { const all = [...text.matchAll(/£\s?(\d+(?:\.\d+)?)/g)].map(m => +m[1]); return all.length ? all[all.length - 1] : (+$('#price').value || null); })();
     c.title = text.split(/[.:!?]/)[0].slice(0, 34) || MODES[c.mode].label; c.refs = attach.filter(a => a.kind === 'ref'); c.personas = buildPersonas(c);
     if (!chats.includes(c)) chats.unshift(c);
     c.msgs.push({role:'u', text, attach});
     openChat(c.id); await simulateRun(c);
   } else {
     const c = active; c.msgs.push({role:'u', text, attach}); renderThread();
+    if (c.live) { c.msgs.push({role:'a', html:'<span class="prog"><span class="spin"></span>Thinking…</span>', prog:true}); renderThread();
+      const hist = c.msgs.filter(m => !m.prog).slice(-8, -1).map(m => ({role: m.role === 'u' ? 'user' : 'assistant', content: m.role === 'u' ? m.text : m.html.replace(/<[^>]+>/g, '')}));
+      let reply; try { const r = await post('/api/ask', {question: text, context: contextFor(c), history: hist}); reply = r.reply ? esc(r.reply).replace(/\n/g, '<br>') : `Couldn't answer: ${esc(r.error || 'no reply')}`; } catch (e) { reply = 'Network error. Try again.'; }
+      c.msgs = c.msgs.filter(m => !m.prog); c.msgs.push({role:'a', html: reply}); if (c === active) renderThread(); return; }
     await sleep(500); c.msgs.push({role:'a', html: followUp(c, text)}); if (c === active) { renderThread(); renderSummary(); renderAdvice(); }
   }
 });
@@ -251,6 +305,42 @@ function renderThread(){
   th.scrollTop = th.scrollHeight;
 }
 async function simulateRun(c){
+  if (await isLive()) { try { return await liveRun(c); } catch (e) { c.msgs = c.msgs.filter(m => !m.prog); c.msgs.push({role:'a', html:`Live run failed (${esc(String(e.message||e).slice(0,120))}). Showing the example engine instead.`}); c.live = null; c.personas = buildPersonas(c); } }
+  return simRun(c);
+}
+async function liveRun(c){
+  const prog = html => { const last = c.msgs.at(-1); const m = {role:'a', html:`<span class="prog"><span class="spin"></span>${html}</span>`, prog:true}; if (last?.prog) c.msgs[c.msgs.length - 1] = m; else c.msgs.push(m); if (c === active) renderThread(); };
+  const unprog = () => { if (c.msgs.at(-1)?.prog) c.msgs.pop(); };
+  c.personas = mapPersonas(await post('/api/personas', {shares: c.shares}));
+  if (c.refs.length) c.msgs.push({role:'a', html:`Loaded context from <b>${c.refs.map(r => esc(r.name)).join(', ')}</b>.`});
+  let n = 0, cat = ''; prog('Searching the live market with Tavily…');
+  try { await sse('/api/ground', {pitch: c.text}, (ev, d) => {
+    if (ev === 'category') { cat = d.category; prog(`Searching the market for <b>${esc(cat)}</b>…`); }
+    if (ev === 'ground_source') { n++; prog(`Searching <b>${esc(cat)}</b> · ${n} sources`); }
+    if (ev === 'brief') { c.brief = d; c.briefTxt = briefText(d); }
+  }); } catch {}
+  unprog();
+  const b = c.brief;
+  c.msgs.push({role:'a', html: b ? `Read <b>${(b.sources||[]).length} sources</b> on ${esc(cat)}. Competitors: ${(b.competitors||[]).slice(0,3).map(x => `${esc(x.name)}${x.price ? ` ${esc(x.price)}` : ''}`).join(', ') || 'none found'}.${(b.painPoints||[])[0] ? ` Top complaint: ${esc(b.painPoints[0])}.` : ''}` : `Market search unavailable, running without it.`});
+  prog('Asking 1,000 people across 6 Nebius model families…');
+  c.live = new Map(); c.ran = true; let last = 0;
+  if (c === active) renderSummary();
+  c.live = await runCrowdLive(c, c.text, (d, size, m, live) => { c.live = live; prog(`1,000 people reacting · ${size} done · ${d}/40 batches`); if (c === active && Date.now() - last > 900) { last = Date.now(); renderSummary(); } });
+  unprog(); c.baseLaunch = summarise(c).launch;
+  const S = summarise(c);
+  c.msgs.push({role:'a', html: headline(c, S) + ` Click any segment to talk to it.`});
+  if (c === active) { renderThread(); renderSummary(); }
+  c.adviceLoading = true; if (c === active) renderAdvice();
+  try { c.liveAdvice = await liveAdvice(c); } catch { c.liveAdvice = []; }
+  c.adviceLoading = false; if (c === active) renderAdvice();
+}
+function liveHeadline(c, S){
+  if (c.mode === 'ads') return `<b>${pct(S.ctr)} clicked, ${pct(S.buy)} bought.</b>`;
+  if (c.mode === 'pricing') return `<b>${pct(S.pay)} would pay £${S.price}.</b>`;
+  if (c.mode === 'launch') return `<b>${pct(S.try30)} would try it within 30 days.</b>`;
+  return `<b>${pct(S.pos)} for, ${pct(S.neg)} against.</b>`;
+}
+async function simRun(c){
   const step = async (html, ms) => { c.msgs.push({role:'a', html: `<span class="prog"><span class="spin"></span>${html}</span>`}); if (c === active) renderThread(); await sleep(ms); c.msgs.pop(); };
   if (c.refs.length) { c.msgs.push({role:'a', html:`Loaded context from <b>${c.refs.map(r => esc(r.name)).join(', ')}</b>. I'll compare against it.`}); }
   await step('Searching the market with Tavily…', 1100);
@@ -261,6 +351,7 @@ async function simulateRun(c){
   if (c === active) { renderThread(); renderSummary(); await sleep(400); renderAdvice(); }
 }
 function headline(c, S){
+  if (c.live) { const top = [...S.segs].filter(x => x.n).sort((a,b) => a.score - b.score)[0]; return liveHeadline(c, S) + (top ? ` ${top.s.label} are the hardest to win.` : ''); }
   if (c.mode === 'ads') return `<b>${pct(S.ctr)} clicked, ${pct(S.buy)} bought.</b> The last line loses skeptics and marketing experts.`;
   if (c.mode === 'pricing') return `<b>${pct(S.pay)} would pay £${S.price}.</b> Target customers cluster just under it.`;
   if (c.mode === 'launch') return `<b>${pct(S.try30)} would try it within 30 days.</b> Domain experts doubt the unit economics.`;
@@ -279,14 +370,14 @@ function followUp(c, text){
 function renderSummary(){
   const c = active, el = $('#summary');
   if (!c.ran) { el.innerHTML = `<div class="w-bh"><h4>Summary</h4></div><p class="w-empty">The crowd's verdict lands here once all 1,000 have reacted.</p>`; return; }
-  const S = summarise(c), base = c.applied.length ? summarise({...c, applied: []}) : null;
+  const S = summarise(c), base = c.applied.length ? (c.live ? {launch: c.baseLaunch} : summarise({...c, applied: []})) : null;
   const k2 = c.mode === 'ads' ? [`${pct(S.ctr)}`, 'Clicked'] : c.mode === 'pricing' ? [pct(S.pay), `Would pay £${S.price}`] : c.mode === 'launch' ? [pct(S.try30), 'Try in 30 days'] : [pct(S.pos), 'For it'];
   const k3 = c.mode === 'ads' ? [pct(S.buy), 'Bought'] : [pct(S.neg), 'Against'];
   const cols = c.mode === 'ads' ? [['Clicked', x => pct(x.ctr)], ['Bought', x => pct(x.buy)]]
     : c.mode === 'pricing' ? [[`Pay £${S.price}`, x => pct(x.pay)], ['Median max', x => `£${x.med}`]]
     : c.mode === 'launch' ? [['Try in 30d', x => pct(x.try30)], ['Top objection', x => esc(x.obj), 'wrap']]
     : [['Split', x => `<span class="w-mini"><i style="width:${x.neg*100}%;background:var(--neg)"></i><i style="width:${(1-x.neg-x.pos)*100}%;background:#D4D4DB"></i><i style="width:${x.pos*100}%;background:var(--pos)"></i></span>`], ['For', x => pct(x.pos)]];
-  el.innerHTML = `<div class="w-bh"><h4>Summary</h4><span class="r num">1,000 people · ${MODES[c.mode].label}${c.applied.length ? ` · ${c.applied.length} change${c.applied.length>1?'s':''} applied` : ''}</span></div>
+  el.innerHTML = `<div class="w-bh"><h4>Summary</h4><span class="r num">${S.all.length.toLocaleString()} reacted${c.live ? ' · live' : ''} · ${MODES[c.mode].label}${c.applied.length ? ` · ${c.applied.length} change${c.applied.length>1?'s':''} applied` : ''}</span></div>
     <p class="w-head">${headline(c, S).replace('<b>', '').replace('</b>', '<span>')}</span></p>
     <div class="w-kpis">
       <div class="w-k"><div class="v">${S.launch.toFixed(1)}</div><div class="l">Launch Score ${base ? `<span class="d">+${(S.launch - base.launch).toFixed(1)}</span>` : ''}</div></div>
@@ -313,6 +404,7 @@ function drawStrip(c, S){
 function renderAdvice(){
   const c = active, el = $('#advice');
   if (!c.ran) { el.innerHTML = `<div class="w-bh"><h4>Advice</h4></div><p class="w-empty">The advice agent suggests fixes after the crowd reacts.</p>`; return; }
+  if (c.live) return renderLiveAdvice(c, el);
   const base = summarise(c).launch, list = adviceFor(c);
   el.innerHTML = `<div class="w-bh"><h4>Advice</h4><span class="r">${list.length} suggestions · tested on the same 1,000</span></div><div class="w-adv">${list.map((a, i) => {
     const done = c.applied.find(x => x.id === a.id);
@@ -328,19 +420,43 @@ function renderAdvice(){
   });
 }
 
+function renderLiveAdvice(c, el){
+  if (c.adviceLoading || !c.liveAdvice) { el.innerHTML = `<div class="w-bh"><h4>Advice</h4></div><span class="prog"><span class="spin"></span>${c.adviceLoading ? 'The advice agent is reading 1,000 reactions…' : 'Waiting for the crowd…'}</span>`; return; }
+  const list = c.liveAdvice;
+  const sp = '<span class="spin" style="display:inline-block;width:11px;height:11px;vertical-align:-1px"></span>';
+  el.innerHTML = `<div class="w-bh"><h4>Advice</h4><span class="r">${list.length} suggestions · Test re-runs all 1,000</span></div><div class="w-adv">${list.map((a, i) => { const done = c.applied.find(x => x.id === a.id);
+    return `<div class="w-ad ${done ? 'done' : ''}"><span class="ix">${i + 1}</span><b>${esc(a.title)}<span class="lever">${esc(a.lever)}</span></b><span class="imp">${done ? (done.after - done.before >= 0 ? '+' : '') + (done.after - done.before).toFixed(1) : ''}</span><p>${esc(a.why)}</p>
+      <span class="act">${done ? '<span class="w-sbtn" style="display:inline-flex;align-items:center;border-color:#BFE8CF;color:var(--pos)">Applied</span>' : `<button class="w-sbtn" type="button" data-a="${a.id}">Test it</button>`}</span>
+      ${done ? `<span class="res">${done.before.toFixed(1)} → ${done.after.toFixed(1)} · "${esc(done.text.slice(0, 90))}${done.text.length > 90 ? '…' : ''}"</span>` : ''}</div>`; }).join('') || '<p class="w-empty">No advice came back. Ask the agent in the chat instead.</p>'}</div>`;
+  $$('#advice [data-a]').forEach(b => b.onclick = async () => {
+    const a = list.find(x => x.id === b.dataset.a); b.disabled = true; b.innerHTML = sp + ' Rewriting';
+    try {
+      const rw = await post('/api/ask', {question: `Rewrite the pitch applying only this change: "${a.title}" (${a.why}). Keep it about the same length. Output only the new pitch text, nothing else.`, context: contextFor(c), history: []});
+      const text = String(rw.reply || '').replace(/^["']|["']$/g, '').trim(); if (!text) throw new Error(rw.error || 'no rewrite');
+      const before = summarise(c).launch; b.innerHTML = sp + ' Testing on 1,000';
+      const np = /£\s?(\d+(?:\.\d+)?)/.exec(text);
+      const live = await runCrowdLive({...c, price: np ? +np[1] : c.price}, text, d => { b.innerHTML = `${sp} ${d}/40`; });
+      c.live = live; c.text = text; if (np) c.price = +np[1];
+      const after = summarise(c).launch; c.applied.push({...a, before, after, text, shift:0});
+      c.msgs.push({role:'a', html:`Tested <b>${esc(a.title)}</b> on all 1,000. Launch Score ${before.toFixed(1)} → <b>${after.toFixed(1)}</b>.<br><span style="color:var(--muted)">New version: "${esc(text)}"</span>`});
+    } catch (e) { c.msgs.push({role:'a', html:`Couldn't test that change: ${esc(String(e.message||e).slice(0,120))}`}); }
+    if (c === active) { renderThread(); renderSummary(); renderAdvice(); renderPersona(); }
+  });
+}
+
 /* ---------------- Persona details column ---------------- */
-function selectSeg(id){ const c = active; c.selSeg = id; c.selPersona = null; $('#ws').classList.remove('np'); renderSummary(); renderPersona(); }
+function selectSeg(id){ const c = active; c.selSeg = id; c.selPersona = null; $('#ws').classList.remove('np'); renderSummary(); renderPersona(); if (isPhone()) setView('persona'); }
 function renderPersona(){
   const c = active, col = $('#personaCol');
   if (!c || !c.selSeg) { col.innerHTML = ''; return; }
-  const seg = SEGS.find(s => s.id === c.selSeg), ps = c.personas.filter(p => p.seg === seg.id), key = c.selPersona == null ? 'seg:' + seg.id : 'p:' + c.selPersona;
+  const seg = SEGS.find(s => s.id === c.selSeg); const ps = c.personas.filter(p => p.seg === seg.id && !react(c, p).pending), key = c.selPersona == null ? 'seg:' + seg.id : 'p:' + c.selPersona;
   const sel = c.selPersona != null ? c.personas[c.selPersona] : null;
   if (!c.pmsgs[key]) c.pmsgs[key] = [{role:'a', html: sel ? personaHello(c, sel) : segHello(c, seg)}];
   col.innerHTML = `<div class="w-ph"><i style="background:${seg.c}"></i><b>${seg.label}</b><span class="num dim" style="font-size:12px">${ps.length} people</span><button class="w-ico x" type="button" id="pClose" aria-label="Close persona details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="w-ptabs" role="tablist">${SEGS.map(s => `<button type="button" role="tab" data-s="${s.id}" aria-selected="${s.id === seg.id}"><i class="dot" style="background:${s.c}"></i>${s.short}</button>`).join('')}</div>
     <div class="w-plist">
       <div class="w-pp ${sel ? '' : 'on'}" data-p=""><span class="av" style="background:${seg.c}">All</span><b>Whole segment</b><small>Talk to all ${ps.length} as one group</small><span class="st"></span></div>
-      ${ps.slice(0, 40).map(p => { const r = react(c, p); return `<div class="w-pp ${sel && sel.i === p.i ? 'on' : ''}" data-p="${p.i}"><span class="av" style="background:${seg.c};opacity:.85">${p.name.split(' ').map(x=>x[0]).join('')}</span><b>${esc(p.name)}, ${p.age}</b><small>${esc(p.role)} · ${MODELS[p.model].fam}</small><span class="st" style="color:${r.st > .25 ? 'var(--pos)' : r.st < -.15 ? 'var(--neg)' : 'var(--muted)'}">${r.st > 0 ? '+' : ''}${r.st.toFixed(2)}</span></div>`; }).join('')}
+      ${ps.slice(0, 40).map(p => { const r = react(c, p); return `<div class="w-pp ${sel && sel.i === p.i ? 'on' : ''}" data-p="${p.i}"><span class="av" style="background:${seg.c};opacity:.85">${p.name.split(' ').map(x=>x[0]).join('')}</span><b>${esc(p.name)}, ${p.age}</b><small>${esc(p.role)} · ${MODELS[p.model % 6].fam}</small><span class="st" style="color:${r.st > .25 ? 'var(--pos)' : r.st < -.15 ? 'var(--neg)' : 'var(--muted)'}">${r.st > 0 ? '+' : ''}${r.st.toFixed(2)}</span></div>`; }).join('')}
       ${ps.length > 40 ? `<div class="w-empty" style="padding:8px 14px">Showing 40 of ${ps.length}</div>` : ''}
     </div>
     <div class="w-pthread" id="pthread">${c.pmsgs[key].map(m => m.role === 'u' ? `<div class="m u">${esc(m.text)}</div>` : `<div class="m a"><span class="who"><i style="background:${seg.c}"></i>${sel ? esc(sel.name) : seg.label}</span><div class="txt">${m.html}</div></div>`).join('')}</div>
@@ -356,11 +472,20 @@ function renderPersona(){
   $('#pcomposer').onsubmit = e => { e.preventDefault(); const t = pinp.value.trim(); if (t) sendPersona(c, key, t); };
 }
 async function sendPersona(c, key, text){
-  c.pmsgs[key].push({role:'u', text}); renderPersona(); await sleep(650);
+  c.pmsgs[key].push({role:'u', text}); renderPersona();
   const sel = c.selPersona != null ? c.personas[c.selPersona] : null, seg = SEGS.find(s => s.id === c.selSeg);
+  if (c.live) {
+    c.pmsgs[key].push({role:'a', html:'<span class="prog"><span class="spin"></span>Typing…</span>'}); renderPersona();
+    const hist = c.pmsgs[key].slice(1, -2).map(m => ({role: m.role === 'u' ? 'user' : 'assistant', content: m.role === 'u' ? m.text : m.html.replace(/<[^>]+>/g, '')}));
+    const reactions = sel ? [c.live.get(sel.id)].filter(Boolean) : c.personas.filter(p => p.seg === seg.id).map(p => c.live.get(p.id)).filter(Boolean);
+    let reply; try { const r = await post('/api/persona-chat', {kind: sel ? 'persona' : 'segment', segment: seg.id, personaId: sel?.id, shares: c.shares, pitch: c.text, mode: MODES[c.mode].label, brief: c.briefTxt, reactions, history: hist, message: text});
+      reply = r.reply ? esc(r.reply) : `No reply (${esc(r.error || 'error')}).`; } catch { reply = 'Network error. Try again.'; }
+    c.pmsgs[key].pop(); c.pmsgs[key].push({role:'a', html: reply}); if (c === active) renderPersona(); return;
+  }
+  await sleep(650);
   c.pmsgs[key].push({role:'a', html: sel ? personaReply(c, sel, text) : segReply(c, seg, text)}); if (c === active) renderPersona();
 }
-function segHello(c, seg){ const x = summarise(c).segs.find(s => s.s.id === seg.id);
+function segHello(c, seg){ const x = summarise(c).segs.find(s => s.s.id === seg.id); if (!x || !x.n) return 'No reactions from this segment yet.';
   return `We're ${x.n} ${seg.label.toLowerCase()}. ${pct(x.pos)} of us like it, ${pct(x.neg)} don't. Our biggest issue: <b>${esc(x.obj)}</b>. Ask us anything.`; }
 function segReply(c, seg, text){ const x = summarise(c).segs.find(s => s.s.id === seg.id), t = text.toLowerCase(), ps = c.personas.filter(p => p.seg === seg.id);
   const q = ps.map(p => ({p, r: react(c, p)})).sort((a, b) => b.r.st - a.r.st);
@@ -368,13 +493,21 @@ function segReply(c, seg, text){ const x = summarise(c).segs.find(s => s.s.id ==
   if (/change|fix|improve|better/.test(t)) return `Fix this first: <b>${esc(x.obj)}</b>. Then show us why you're different from GymFlex.`;
   if (/click|ad|buy/.test(t)) return `${pct(x.ctr)} of us would click and ${pct(x.buy)} would buy.`;
   return `Loudest for: "${esc(q[0].r.quote)}" Loudest against: "${esc(q[q.length - 1].r.quote)}"`; }
-function personaHello(c, p){ const r = react(c, p); return `Hi, I'm ${esc(p.name.split(' ')[0])}, ${p.age}, a ${esc(p.role)}. "${esc(r.quote)}"`; }
+function personaHello(c, p){ const r = react(c, p); if (c.live && r.quote) return `I'm ${esc(p.name.split(' ')[0])}, ${p.age}, ${esc(p.role)}. "${esc(r.quote)}"${r.objection ? ` My issue: ${esc(r.objection)}.` : ''}`; return `Hi, I'm ${esc(p.name.split(' ')[0])}, ${p.age}, a ${esc(p.role)}. "${esc(r.quote)}"`; }
 function personaReply(c, p, text){ const r = react(c, p), t = text.toLowerCase(), price = priceOf(c);
   if (/price|£|pay|cost|afford/.test(t)) return r.maxPrice >= (price || 0) ? `£${price} is fine for me. I'd go up to about £${r.maxPrice}.` : `£${price} is too much. I'd pay £${r.maxPrice} at most, I'm on a ${p.inc} income.`;
   if (/why|reason|feel|think/.test(t)) return r.objection ? `Honestly? ${esc(r.objection)}. That's what puts me off.` : `It fits how I already live. I'm a ${p.pers}, and this is the kind of thing I try early.`;
   if (/change|fix|better|convince/.test(t)) return r.st > .25 ? `Don't change much. Maybe show me the nearest sites.` : `Drop the "for your benefit" line and let me cancel any time. Then I'd look again.`;
   if (/buy|sign|join|click/.test(t)) return r.bought ? `Yes, I'd sign up.` : r.clicked ? `I'd click to look, but I wouldn't buy yet.` : `I'd scroll straight past, sorry.`;
   return r.st > .25 ? `I'm into it. ${esc(r.quote)}` : r.st < -.15 ? `Still not sold. ${esc(r.quote)}` : `I'm on the fence. ${esc(r.quote)}`; }
+
+/* ---------------- Phone: view tabs + chat drawer ---------------- */
+function setView(v){ $('#ws').dataset.view = v; $$('#mtabs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); }
+$('#mtabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.v === 'persona' && active && !active.selSeg) selectSeg('icp'); setView(b.dataset.v); });
+(() => { const mb = document.createElement('button'); mb.type = 'button'; mb.className = 'w-mobmenu'; mb.setAttribute('aria-label', 'Chats'); mb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>'; $('#ws').appendChild(mb);
+  mb.addEventListener('click', e => { e.stopPropagation(); $('#ws').classList.toggle('drawer'); });
+  document.addEventListener('click', e => { if (!e.target.closest('.w-chats') && !e.target.closest('.w-mobmenu')) $('#ws').classList.remove('drawer'); }); })();
+const isPhone = () => matchMedia('(max-width:700px)').matches;
 
 /* ---------------- Resizable columns & split ---------------- */
 function drag(el, onMove){
@@ -392,19 +525,25 @@ $('#ws').style.setProperty('--wpers', '340px');
 
 /* ---------------- Voice mode ---------------- */
 let vOn = false, vMuted = false, analyser = null, stream = null, rec = null, finalText = '', simTimer = null;
+const vnote = (t, err) => { const n = $('#vnote'); n.textContent = t; n.classList.toggle('w-vnote-err', !!err); };
 $('#micBtn').addEventListener('click', async () => {
-  vOn = true; vMuted = false; finalText = ''; $('#voice').classList.add('on'); $('#vtext').textContent = 'Pitch your launch out loud.'; requestAnimationFrame(drawOrb);
-  let live = false;
-  try { stream = await navigator.mediaDevices.getUserMedia({audio:true}); const ac = new (window.AudioContext || window.webkitAudioContext)();
-    analyser = ac.createAnalyser(); analyser.fftSize = 1024; ac.createMediaStreamSource(stream).connect(analyser); analyser._ac = ac; live = true; } catch { analyser = null; }
+  vOn = true; vMuted = false; finalText = ''; $('#voice').classList.add('on'); $('#vtext').textContent = 'Starting the microphone…'; vnote(''); requestAnimationFrame(drawOrb);
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (live && SR) { rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = 'en-GB';
-    rec.onresult = e => { let it = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) finalText += (finalText ? ' ' : '') + t.trim(); else it += t; } $('#vtext').textContent = (finalText + ' ' + it).trim(); };
-    rec.onend = () => { if (vOn) try { rec.start(); } catch {} }; try { rec.start(); } catch {} $('#vnote').textContent = 'Listening through your microphone.'; }
-  else { $('#vnote').textContent = 'Microphone not available here, so a sample pitch plays.'; const words = (active?.text || MODES[draftMode].text).split(' '); let i = 0;
-    simTimer = setInterval(() => { if (!vOn || i >= words.length) return clearInterval(simTimer); if (!vMuted) { finalText += (finalText ? ' ' : '') + words[i++]; $('#vtext').textContent = finalText; } }, reduce ? 0 : 150); }
+  if (!window.isSecureContext) { vnote('Voice needs https or localhost. Open this page at http://localhost:3100/web/', true); return playSample(); }
+  try { stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}); const ac = new (window.AudioContext || window.webkitAudioContext)(); await ac.resume();
+    analyser = ac.createAnalyser(); analyser.fftSize = 1024; ac.createMediaStreamSource(stream).connect(analyser); analyser._ac = ac; }
+  catch (e) { analyser = null; vnote(e && e.name === 'NotAllowedError' ? 'Microphone blocked. Click the mic icon in the address bar, allow it, then try again.' : 'No microphone found. Playing a sample pitch instead.', true); return playSample(); }
+  if (!SR) { vnote('Your mic works, but live transcription needs Chrome or Edge. Speak and we will show the waveform; type your pitch after.', true); $('#vtext').textContent = 'Listening (no transcription in this browser)'; return; }
+  rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = navigator.language || 'en-GB';
+  rec.onstart = () => { $('#vtext').textContent = 'Listening. Pitch your launch out loud.'; vnote('Speak naturally. Press Done when you finish.'); };
+  rec.onresult = e => { let it = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) finalText += (finalText ? ' ' : '') + t.trim(); else it += t; } $('#vtext').textContent = (finalText + ' ' + it).trim() || 'Listening…'; };
+  rec.onerror = e => { const m = {'not-allowed':'Microphone permission denied for speech.', 'network':'The speech service needs an internet connection.', 'no-speech':'No speech heard yet. Keep talking.', 'audio-capture':'No microphone found.'}[e.error] || ('Voice error: ' + e.error); vnote(m, e.error !== 'no-speech'); };
+  rec.onend = () => { if (vOn && !vMuted) try { rec.start(); } catch {} };
+  try { rec.start(); } catch (e) { vnote('Could not start speech recognition: ' + e.message, true); }
 });
-$('#vMute').addEventListener('click', () => { vMuted = !vMuted; $('#vMute').textContent = vMuted ? 'Unmute' : 'Mute'; stream?.getAudioTracks().forEach(t => t.enabled = !vMuted); });
+function playSample(){ const words = (active?.text || EX[draftMode][0][1]).split(' '); let i = 0; $('#vtext').textContent = '';
+  simTimer = setInterval(() => { if (!vOn || i >= words.length) return clearInterval(simTimer); if (!vMuted) { finalText += (finalText ? ' ' : '') + words[i++]; $('#vtext').textContent = finalText; } }, reduce ? 0 : 150); }
+$('#vMute').addEventListener('click', () => { vMuted = !vMuted; $('#vMute').textContent = vMuted ? 'Unmute' : 'Mute'; stream?.getAudioTracks().forEach(t => t.enabled = !vMuted); try { vMuted ? rec?.stop() : rec?.start(); } catch {} });
 $('#vEnd').addEventListener('click', endVoice);
 function endVoice(){ vOn = false; clearInterval(simTimer); try { rec?.stop(); } catch {} rec = null; stream?.getTracks().forEach(t => t.stop()); stream = null; try { analyser?._ac?.close(); } catch {} analyser = null;
   $('#voice').classList.remove('on'); if (finalText.trim()) { $('#inp').value = finalText.trim(); autosize(); } $('#inp').focus(); }

@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@1&display=swap">
-<link rel="stylesheet" href="styles.css?v=3">
-<link rel="stylesheet" href="ws.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="ws.css?v=5">
 </head>
 <body>
 <!--APP-START-->
@@ -86,6 +86,7 @@
       </div>
       <input type="file" id="fileIn" multiple hidden>
     </form>
+    <div class="w-ex" id="examples" aria-label="Examples"></div>
   </section>
 
   <div class="w-gut" data-g="a" aria-hidden="true"></div>
@@ -104,6 +105,7 @@
 
   <!-- Voice overlay -->
   <div class="w-voice" id="voice"><canvas id="orb"></canvas><p id="vtext">Pitch your launch out loud.</p><div class="w-vctl"><button class="w-round" id="vMute" type="button" aria-label="Mute">Mute</button><button class="w-round w-end" id="vEnd" type="button">Done</button></div><small id="vnote"></small></div>
+  <nav class="w-mtabs" id="mtabs" aria-label="Views"><button type="button" data-v="chat" aria-pressed="true">Chat</button><button type="button" data-v="summary" aria-pressed="false">Summary</button><button type="button" data-v="advice" aria-pressed="false">Advice</button><button type="button" data-v="persona" aria-pressed="false">People</button></nav>
   <div class="w-pop w-ctx" id="ctx" hidden><button type="button" data-a="rename">Rename</button><button type="button" data-a="ref">Reference in this chat</button><button type="button" data-a="delete" class="w-danger">Delete</button></div>
   <div class="w-pop w-refpick" id="refPick" hidden></div>
 </div>
@@ -131,6 +133,6 @@
   </div>
 </section>
 <!--APP-END-->
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
