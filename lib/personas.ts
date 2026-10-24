@@ -222,3 +222,8 @@ export function splitSentences(text: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+/** Build full segment configs from the static web UI's simple shares / importance maps. */
+export function configsFromShares(shares: Partial<Record<Segment, number>>, importance?: Partial<Record<Segment, number>>): SegmentConfig[] {
+  return defaultConfigs('default').map((c) => ({ ...c, share: shares[c.id] ?? c.share, importance: importance?.[c.id] ?? c.importance }));
+}

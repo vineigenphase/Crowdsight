@@ -50,12 +50,14 @@ Each test type shifts the mix. For example, Ads raises marketing experts to 20%.
 
 ## Going live
 
-The UI runs on a deterministic simulated engine so it demos anywhere. To connect the real backend (the `crowdsight` Next.js repo):
+This UI is served by the `crowdsight` Next.js app at `/web/index.html#app` and runs on the live backend:
 
-1. Serve these files from that app, e.g. copy them into `public/`.
-2. In `app.js`, replace the batch loop in `startRun()` with a `fetch('/api/crowd')` SSE reader. Map `batch_done.reactions` onto `reacted` and the reaction fields.
-3. Replace `optimise()` with `/api/optimise` and render its `proposal`, `variant_done` and `apply` events into the loop rows.
-4. Add `clicked` and `bought` to the reaction schema in `lib/crowd.ts`.
+1. `/api/ground` searches the market with Tavily and the Nebius strong model writes the brief.
+2. `/api/personas` returns the exact 1,000 personas the server samples for the current segment shares.
+3. `/api/crowd` streams real reactions from 6 Nebius model families; each dot recolours as its batch lands.
+4. `/api/optimise` runs the agent loop (one lever, 3 variants, fair race on 200, confirm on 1,000) and ends with a final AI summary.
+
+Personas without a real reaction are left out of every score. `clicked` and `bought` are derived from intent, share and max price.
 
 Voice mode uses the browser's microphone plus Web Speech API. Where the mic is unavailable, it falls back to a sample pitch.
 
