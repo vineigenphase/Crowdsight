@@ -6,7 +6,17 @@ import { useEffect, useRef } from 'react';
  * RMS ring, 24 signal points driven by frequency bins, and a dot-grid halo whose points lift
  * with amplitude. Flat line, still ring and resting dots when idle. No glow.
  */
-export function VoiceVisual({ analyser, status, elapsed }: { analyser: AnalyserNode | null; status: 'idle' | 'listening' | 'muted'; elapsed: number }) {
+// violet #8B7CFF → blue #4FA3FF → teal #2DD4BF
+function barColor(t: number) {
+  const stops = [[139, 124, 255], [79, 163, 255], [45, 212, 191]];
+  const k = Math.max(0, Math.min(1, t)) * 2;
+  const i = Math.min(1, Math.floor(k));
+  const f = k - i;
+  const c = stops[i].map((v, j) => Math.round(v + (stops[i + 1][j] - v) * f));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+export function VoiceVisual({ analyser, status, elapsed, interim }: { analyser: AnalyserNode | null; status: 'idle' | 'listening' | 'muted'; elapsed: number; interim?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const live = useRef(analyser);
   live.current = analyser;
@@ -19,6 +29,7 @@ export function VoiceVisual({ analyser, status, elapsed }: { analyser: AnalyserN
     const time = new Uint8Array(2048);
     const freq = new Uint8Array(1024);
     const binsS = new Float32Array(24);
+    const bars = new Float32Array(48);
     const frame = (now: number) => {
       const r = cv.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -42,7 +53,7 @@ export function VoiceVisual({ analyser, status, elapsed }: { analyser: AnalyserN
       }
 
       const cx = w / 2, cy = h / 2;
-      const base = Math.min(h * 0.2, 44);
+      const base = Math.min(h * 0.24, 56);
       const ringR = base * (1 + amp * 0.35);
       const haloR = base * 2.3;
 
@@ -51,19 +62,24 @@ export function VoiceVisual({ analyser, status, elapsed }: { analyser: AnalyserN
       for (let y = -haloR; y <= haloR; y += step) {
         for (let x = -haloR; x <= haloR; x += step) {
           const d = Math.hypot(x, y);
-          if (d > haloR || d < ringR + 8) continue;
+          if (d > haloR || d < ringR + 8 || (Math.abs(x) < 124 && Math.abs(y) < base * 0.9)) continue;
           const ang = Math.atan2(y, x);
           const bi = Math.floor(((ang + Math.PI) / (Math.PI * 2)) * 24) % 24;
           const falloff = 1 - (d - ringR) / (haloR - ringR);
           const lift = binsS[bi] * falloff;
-          ctx.fillStyle = `rgba(237,237,237,${0.07 + lift * 0.55})`;
+          ctx.globalAlpha = 0.06 + lift * 0.55;
+          ctx.fillStyle = barColor(bi / 23);
           ctx.fillRect(cx + x - 0.75, cy + y - 0.75, 1.5, 1.5);
         }
       }
 
-      // Fine waveform across the full width, broken where it passes the halo.
+      ctx.globalAlpha = 1;
+      // Fine waveform across the full width, broken where it passes the halo; violet → teal.
       ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(237,237,237,.6)';
+      const grad = ctx.createLinearGradient(16, 0, w - 16, 0);
+      grad.addColorStop(0, 'rgba(139,124,255,.55)');
+      grad.addColorStop(1, 'rgba(45,212,191,.55)');
+      ctx.strokeStyle = grad;
       const N = 320;
       let pen = false;
       ctx.beginPath();
@@ -77,25 +93,36 @@ export function VoiceVisual({ analyser, status, elapsed }: { analyser: AnalyserN
       }
       ctx.stroke();
 
-      // Ring
-      ctx.strokeStyle = 'rgba(237,237,237,.7)';
-      ctx.beginPath(); ctx.arc(cx, cy, ringR, 0, Math.PI * 2); ctx.stroke();
-      // Amplitude-reactive geometry: two counter-rotating squares inside the ring.
-      const g = ringR * 0.62;
-      const rot = now / 6000;
-      ctx.strokeStyle = `rgba(237,237,237,${0.1 + amp * 0.25})`;
-      for (const [k, dir] of [[1, 1], [0.7, -1]] as const) {
-        ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4 + dir * (rot + amp * 0.6));
-        const s = g * k * (1 + amp * 0.2);
-        ctx.strokeRect(-s / 2, -s / 2, s, s); ctx.restore();
+      // Faint ring
+      ctx.strokeStyle = 'rgba(237,237,237,.1)';
+      ctx.beginPath(); ctx.arc(cx, cy, ringR + 4, 0, Math.PI * 2); ctx.stroke();
+      // 48 mirrored bars inside the halo, violet (low) → blue → teal (high).
+      const NB = 48, bw = 2, gap = 3;
+      const span = NB * (bw + gap) - gap;
+      const maxH = ringR * 1.7;
+      for (let i = 0; i < NB; i++) {
+        const v = a ? freq[Math.floor(2 + (i / NB) * 180)] / 255 : 0;
+        bars[i] += (v - bars[i]) * 0.35;
+        const hgt = a ? Math.max(2, bars[i] * maxH) : 2;
+        const x = cx - span / 2 + i * (bw + gap);
+        ctx.globalAlpha = a ? 0.95 : 0.3;
+        ctx.fillStyle = barColor(i / (NB - 1));
+        ctx.beginPath(); ctx.roundRect(x, cy - hgt / 2, bw, hgt, 1); ctx.fill();
       }
-      // 24 signal points, offset outward by their frequency bin.
+      ctx.globalAlpha = 1;
+      // Centre line through the bars, brighter while speaking.
+      ctx.strokeStyle = `rgba(61,220,151,${0.35 + amp * 0.5})`;
+      ctx.beginPath(); ctx.moveTo(cx - span / 2 - 6, cy); ctx.lineTo(cx + span / 2 + 6, cy); ctx.stroke();
+      // 24 signal points, offset outward by their frequency bin, tinted by angle.
       for (let i = 0; i < 24; i++) {
         const ang = (i / 24) * Math.PI * 2 - Math.PI / 2;
-        const d = ringR + 6 + binsS[i] * 18;
-        ctx.fillStyle = `rgba(237,237,237,${0.35 + binsS[i] * 0.65})`;
+        const d = ringR + 10 + binsS[i] * 18;
+        ctx.globalAlpha = 0.35 + binsS[i] * 0.65;
+        ctx.fillStyle = barColor(i / 23);
         ctx.beginPath(); ctx.arc(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d, 1.4, 0, Math.PI * 2); ctx.fill();
       }
+      ctx.globalAlpha = 1;
+      void now;
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -105,13 +132,14 @@ export function VoiceVisual({ analyser, status, elapsed }: { analyser: AnalyserN
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const ss = String(Math.floor(elapsed % 60)).padStart(2, '0');
   return (
-    <div className="relative h-[220px] shrink-0">
+    <div className="relative h-[260px] shrink-0">
       <canvas ref={ref} className="absolute inset-0 h-full w-full" />
-      <div className="absolute left-5 top-4 flex items-center gap-2 text-[11px] text-[var(--dim)]">
+      <div className="absolute left-5 top-4 flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--panel2)] px-2.5 py-1 text-[11px] text-[var(--dim)]">
         <span className={`h-1.5 w-1.5 rounded-full transition-colors duration-200 ${status === 'listening' ? 'bg-[var(--pos)]' : status === 'muted' ? 'bg-[var(--neg)]' : 'bg-[#4a4a4f]'}`} />
         <span>{status === 'listening' ? 'Listening' : status === 'muted' ? 'Muted' : 'Mic idle'}</span>
       </div>
-      <div className="num absolute right-5 top-4 text-[11px] text-[var(--dim)]">{mm}:{ss}</div>
+      <div className="num absolute right-5 top-5 text-[11px] text-[var(--dim)]">{mm}:{ss}</div>
+      <div className="absolute inset-x-0 bottom-3 truncate px-8 text-center text-[15px] text-[var(--dim)]">{interim || (status === 'listening' ? '…' : '')}</div>
     </div>
   );
 }

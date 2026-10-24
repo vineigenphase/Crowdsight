@@ -344,7 +344,7 @@ export default function Home() {
               </span>
             </div>
           </div>
-          <VoiceVisual analyser={analyser} status={micOn ? 'listening' : 'idle'} elapsed={elapsed} />
+          <VoiceVisual analyser={analyser} status={micOn ? 'listening' : 'idle'} elapsed={elapsed} interim={interim} />
           <div className="min-h-0 flex-1 border-t border-[var(--line)]">
             <Transcript
               mode={mode}
